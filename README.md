@@ -1,0 +1,2 @@
+# Solar-energy-generation-predictor-and-the-relation-between-weather-and-the-solar-energy-generation
+This ML model is designed t predict the future solar energy generations in different districts in Sri Lanka, at different times. In addition to that this model helps the user to identify if there is a correlation between the solar energy generation and the weather factors such as rainfall, humidity, and cloud coverage. 
