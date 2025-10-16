@@ -61,3 +61,61 @@ wheels/
 .installed.cfg
 *.egg
 
+#JUPYTER NOTEBOOKS
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+#LOGS
+*.log 
+logs/
+
+#IDE/EDITORS
+#VSCode
+.vscode/
+
+#PyCharm
+.idea/
+
+#Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+#Vim
+*.swp
+*.swo
+*~
+
+#OS FILES
+#maOS
+.DS_Store
+.AppleDouble
+LSOverride
+
+#Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini 
+
+#Linux
+*~
+
+#DOCKER
+#Docker volumes
+docker-compose.override.yml
+
+#SECRETS AND CONFIGS
+.env.env.local
+secrets.yaml
+credentials.json
+
+#TESTING
+pytest_cache/
+.coverage
+htmlcov/
+.tox
+
+#MISC
+*.bak
+*.tmp
+.cache/
+
