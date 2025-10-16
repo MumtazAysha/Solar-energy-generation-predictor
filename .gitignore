@@ -1,0 +1,20 @@
+#DATA FILES - Keep datasets private
+
+#Exclude all data files
+data/raw/**
+data/bronze/**
+data/silver/**
+data/gold/**
+
+#But keep the directory structure  
+!data/raw/.gitkeep
+!data/brnze/.gitkeep
+!data/silver/.gitkeep
+!data/gold/.gitkeep
+
+#Exclude all excel files
+*.xlsx
+*.xlsx*.csv
+
+#Exclude parquet files
+*.parquet
