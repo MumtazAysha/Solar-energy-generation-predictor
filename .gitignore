@@ -1,6 +1,6 @@
 #DATA FILES - Keep datasets private
 
-#Exclude all data files
+#Exclude all data files #Ignre all files in these folders. **-ignoore all files and subdirectries
 data/raw/**
 data/bronze/**
 data/silver/**
@@ -8,44 +8,58 @@ data/gold/**
 
 #But keep the directory structure  
 !data/raw/.gitkeep
-!data/brnze/.gitkeep
+!data/bronze/.gitkeep
 !data/silver/.gitkeep
 !data/gold/.gitkeep
 
 #Exclude all excel files
-*.xlsx
-*.xlsx*.csv
+*.xlsx    #*wildcard for any file with .xlsx, ,xls, .csv extensions.
+*.xls 
+*.csv
 
 #Exclude parquet files
 *.parquet
 
 #OUTPUTS - Generated files
 outputs/**
-!ooutputs/.gitkeep
+!outputs/.gitkeep 
+#ignore all generated outputs(predictions, plots, etc.)
 
 #Model files
+#ignores trained machine learning model files. 
+#scikit-learn models
 *.pkl
 *.joblib
+#Keras/TensrFlow models
 *.h5
+#PyTorch models
 *.pt
 *.pth
+
 
 #PYTHON
 
 #Byte-compiled / optimized
-__pycache__/
+#Ignores Python cache files(automatically generated when Pythn runs)
+#folder with compiled Pythn files
+__pycache__/ 
+#*.pyc, *.pyo, *.pyd - coompiled python bytecode files
 *.py[cod]
 *$py.class
+#compiled shared libraries
 *.so
 
 #Virtual environments
+#Ignores pythn virtual envirnment folders
 venv/
 env/
 ENV/
 .venv
 
 #Distribution / packaging
-.PYTHONbuild/
+#ignres pythoon package build artifacts
+.python
+build/
 develop-eggs/
 dist/
 downloads/
@@ -62,30 +76,34 @@ wheels/
 *.egg
 
 #JUPYTER NOTEBOOKS
+#ignores jupyter notebook checkpoints and temporary files
+#contains backup or autosave files
 .ipynb_checkpoints/
 *.ipynb_checkpoints
 
 #LOGS
+#ignoores log files
 *.log 
 logs/
 
 #IDE/EDITORS
-#VSCode
+#VSCode settings
 .vscode/
 
-#PyCharm
+#PyCharm settings
 .idea/
 
 #Sublime Text
 *.sublime-project
 *.sublime-workspace
 
-#Vim
+#Vim temporary files
 *.swp
 *.swo
 *~
 
 #OS FILES
+#ignores OS generated files
 #maOS
 .DS_Store
 .AppleDouble
@@ -101,20 +119,27 @@ Desktop.ini
 
 #DOCKER
 #Docker volumes
+#ignores lcal Doocker compose variables
+#Main docker-compose.yml is tracked
 docker-compose.override.yml
 
 #SECRETS AND CONFIGS
-.env.env.local
+#ignores sensitive information like API keys, passwords, and other credentials
+#config files that may contain sensitive information
+.env.
+env.local
 secrets.yaml
 credentials.json
 
 #TESTING
-pytest_cache/
+#Ignores test artifacts and coverage spots
+.pytest_cache/
 .coverage
 htmlcov/
 .tox
 
 #MISC
+#ignores backup and temporary files
 *.bak
 *.tmp
 .cache/
