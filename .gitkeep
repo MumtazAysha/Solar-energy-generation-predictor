@@ -1,0 +1,12 @@
+#Create .gitkeep files in empty data folders
+
+toouch data/raw/.gitkeep
+touch/data/bronze/.gitkeep
+touch/data/silver/.gitkeep
+touch/data/gold/.gitkeep
+touch outputs/.gitkeep
+touch outputs/model/.gitkeep
+touch outputs/plots/.gitkeep
+touch outputs/predictions/.gitkeep
+touch outputs/metrics/.gitkeep
+
