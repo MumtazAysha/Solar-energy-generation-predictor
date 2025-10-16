@@ -1,1 +1,66 @@
+#Solar Generation Forecasting Configuration
+
+project_name: "Solar Energy Generation Predictor"
+data_source: "Local CSV files from Public Utilities Commission of Sri Lanka"
+descriptioon: "Time-series forecasting f solar PV generation across 25 districts(2018-2024)"
+
+#Data configuration
+years:
+-2018
+-2019
+-2020
+-2021
+-2022
+-2023
+-2024
+
+#Primary year for training (can be changed for different experiments)
+year: 2022
+
+#Train/test split
+train_fraction:0.8 
+test_fraction:0.2
+
+#Data paths
+data_paths:
+ raw: "data/raw"
+ bronze: "data/bronze"
+ silver: "data/silver"
+ gold: "data/gold"
+
+ #Output paths
+ output_paths:
+  models: "outputs/models"
+  predictions: "outputs/predictions"
+  metrics: "outputs/metrics"
+  plots: "ooutputs/plots"
+
+  #All 25 districts in Sri Lanka
+  -"Ampara"
+  -"Anuradhapura"
+  -"Badulla"
+  -"Batticaloa"
+  -"Colombo"
+  -"Galle"
+  -"Gampaha"
+  -"Hambantota"
+  -"Jaffna"
+  -"Kalutara"
+  -"Kandy"
+  -"Kegalle"
+  -"Kilinochchi"
+  -"Kurunegala"
+  -"Mannar"
+  -"Matale"
+  -"Matara"
+  -"Monaragala"
+  -"Mullaitivu"
+  -"NuwaraEliya"
+  -"Polonnaruwa"
+  -"Puttalam"
+  -"Ratnapura"
+  -"Trincomalee"
+  -"Vavuniya"
+
+
 
