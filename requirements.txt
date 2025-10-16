@@ -1,19 +1,19 @@
 #Data Science
-pandas==2.2.0
-numpy==1.26.3
-scipy==1.11.4
+pandas>=2.3.3
+numpy>=2.3.3
+scipy>=1.16.2
 
 #Machne Learning
-scikit-learn==1.4.0
-xgboost==2.0.3
+scikit-learn>=1.7.2
+xgboost>=3.0.5
 
 #Data I/O
-pyarrw==15.0.0
-openpyxl==3.1.2
+pyarrow>=21.0.0
+openpyxl>=3.1.5
 
 #C0nfiguration
-pyyaml==6.0.1
+pyyaml>=6.0.3
 
 #Visualization
-matplotlib==3.8.2
-seaborn==0.13.1
+matplotlib>=3.10.7
+seaborn>=0.13.2
