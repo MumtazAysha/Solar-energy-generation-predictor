@@ -51,3 +51,15 @@ def read_wide_excel(file_path):
     df_long['hour'] = df_long['time_decimal'].str.split('.').str[0].astype(int)
     df_long['minute'] = df_long['time_decimal'].str.split('.').str[1].astype(int)
     
+    # Create full datetime column
+    df_long['datetime'] = pd.to_datetime(
+        df_long['Date'].dt.strftime('%Y-%m-%d') + ' ' + 
+        df_long['hour'].astype(str).str.zfill(2) + ':' + 
+        df_long['minute'].astype(str).str.zfill(2)
+    )
+    
+    # Select and reorder columns
+    df_long = df_long[[
+        'datetime', 'Date', 'Year', 'Month', 'Day', 
+        'District', 'Zone', 'time_decimal', 'generation_kw'
+    ]]
