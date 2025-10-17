@@ -63,3 +63,11 @@ def read_wide_excel(file_path):
         'datetime', 'Date', 'Year', 'Month', 'Day', 
         'District', 'Zone', 'time_decimal', 'generation_kw'
     ]]
+
+    # Sort by datetime
+    df_long = df_long.sort_values(['District', 'datetime']).reset_index(drop=True)
+    
+    logger.info(f"  ✅ Converted to {len(df_long)} rows")
+    
+    return df_long
+
