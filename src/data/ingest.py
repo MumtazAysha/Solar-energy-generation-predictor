@@ -71,3 +71,31 @@ def read_wide_excel(file_path):
     
     return df_long
 
+def ingest_data():
+    """
+    Main ingestion function: reads all raw Excel files and creates Bronze parquet.
+    """
+    cfg = load_config()
+    
+    raw_path = Path(cfg.data_paths['raw'])
+    bronze_path = Path(cfg.data_paths['bronze'])
+    
+    # Create bronze directory if it doesn't exist
+    bronze_path.mkdir(parents=True, exist_ok=True)
+    
+    logger.info("="*60)
+    logger.info("STEP 1: INGESTION (Raw → Bronze)")
+    logger.info("="*60)
+    
+    # Find all Excel files in raw directory
+    excel_files = sorted(list(raw_path.glob('*.xlsx')) + list(raw_path.glob('*.xls')))
+    
+    if not excel_files:
+        logger.error(f"❌ No Excel files found in {raw_path}")
+        logger.info(f"Please add Excel files to {raw_path.absolute()}")
+        return
+    
+    logger.info(f"Found {len(excel_files)} Excel files")
+
+    
+
