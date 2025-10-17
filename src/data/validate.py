@@ -33,3 +33,29 @@ def cheeck_missing_values(df):
     
     return missing
 
+def check_date_ranges(df):
+    """Validate date ranges are reasonable"""
+    logger.info("Checking date ranges...")
+    
+    min_date = df['Date'].min()
+    max_date = df['Date'].max()
+    
+    logger.info(f"  Date range: {min_date.date()} to {max_date.date()}")
+    
+    # Check for future dates
+    from datetime import datetime
+    today = datetime.now().date()
+    future_dates = df[df['Date'].dt.date > today]
+    
+    if len(future_dates) > 0:
+        logger.warning(f"  ⚠️ Found {len(future_dates):,} records with future dates")
+    else:
+        logger.info(f"  ✅ No future dates found")
+    
+    # Check year distribution
+    year_counts = df['Year'].value_counts().sort_index()
+    logger.info(f"  Records per year:")
+    for year, count in year_counts.items():
+        logger.info(f"    {year}: {count:,} records")
+    
+    return min_date, max_date
