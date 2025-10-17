@@ -12,7 +12,7 @@ from src.common.io_utils import read_parquet, write_parquet
 
 logger = logging.getLogger(__name__)
 
-def cheeck_missing_values(df):
+def check_missing_values(df):
     """Check for missing values in critical columns"""
     logger.info("Checking for missing values...")
 
