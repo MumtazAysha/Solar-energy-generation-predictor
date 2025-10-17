@@ -59,3 +59,36 @@ def check_date_ranges(df):
         logger.info(f"    {year}: {count:,} records")
     
     return min_date, max_date
+
+def check_generation_values(df):
+    """Validate generation values are within expected range"""
+    logger.info("Checking generation values...")
+    
+    # Basic stats
+    gen_stats = df['generation_kw'].describe()
+    logger.info(f"  Generation statistics:")
+    logger.info(f"    Min: {gen_stats['min']:.2f} kW")
+    logger.info(f"    Max: {gen_stats['max']:.2f} kW")
+    logger.info(f"    Mean: {gen_stats['mean']:.2f} kW")
+    logger.info(f"    Median: {gen_stats['50%']:.2f} kW")
+    
+    # Check for negative values
+    negative = df[df['generation_kw'] < 0]
+    if len(negative) > 0:
+        logger.warning(f"  ⚠️ Found {len(negative):,} negative generation values")
+    else:
+        logger.info(f"  ✅ No negative values")
+    
+    # Check for zeros
+    zeros = df[df['generation_kw'] == 0]
+    zero_pct = (len(zeros) / len(df)) * 100
+    logger.info(f"  Zero values: {len(zeros):,} ({zero_pct:.2f}%)")
+    
+    # Check for extreme outliers (> 99.9th percentile)
+    p999 = df['generation_kw'].quantile(0.999)
+    outliers = df[df['generation_kw'] > p999]
+    if len(outliers) > 0:
+        logger.info(f"  Extreme outliers (>{p999:.0f} kW): {len(outliers):,} records")
+    
+    return gen_stats
+
