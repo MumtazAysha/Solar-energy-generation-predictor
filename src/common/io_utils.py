@@ -16,7 +16,7 @@ def read_parquet(path):
 def write_parquet(df, path):
     """Write DataFrame to parquet file"""
     # Ensure parent directory exists
-    path(path).parent.mkdir(parents=True, exist_ok=True)
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
     logger.info(f"Writing to {path}")
     df.to_parquet(path, index=False, compression='snappy')
     logger.info(f" Saved {len(df)} rows to {path}")
