@@ -7,7 +7,7 @@ import pandas as pd
 import logging
 from pathlib import Path
 from src.common.config import load_config
-from src.common.io_utils import write_paarquet
+from src.common.io_utils import write_paarquet, write_parquet
 
 logger = logging.getLogger(__name__)
 
@@ -97,5 +97,49 @@ def ingest_data():
     
     logger.info(f"Found {len(excel_files)} Excel files")
 
+    # Process each file
+    all_data = []
+    success_count = 0
+    for i, file_path in enumerate(excel_files, 1):
+        try:
+            logger.info(f"[{i}/{len(excel_files)}] Processing {file_path.name}...")
+            df = read_wide_excel(file_path)
+            all_data.append(df)
+            success_count += 1
+        except Exception as e:
+            logger.error(f"❌ Failed to process {file_path.name}: {str(e)}")
+            continue
     
+    if not all_data:
+        logger.error("❌ No data was successfully ingested")
+        return
+    
+    # Combine all dataframes
+    logger.info(f"\nCombining data from {success_count} files...")
+    df_combined = pd.concat(all_data, ignore_index=True)
+    
+    # Save to Bronze as parquet
+    output_file = bronze_path / "bronze_all_years.parquet"
+    write_parquet(df_combined, output_file)
+    
+    logger.info("\n" + "="*60)
+    logger.info("✅ INGESTION COMPLETE")
+    logger.info("="*60)
+    logger.info(f"Total records: {len(df_combined):,}")
+    logger.info(f"Districts: {df_combined['District'].nunique()}")
+    logger.info(f"Years: {sorted(df_combined['Year'].unique())}")
+    logger.info(f"Date range: {df_combined['Date'].min()} to {df_combined['Date'].max()}")
+    logger.info(f"Output: {output_file}")
+    logger.info("="*60)
+
+
+if __name__ == "__main__":
+    # Set up logging for standalone execution
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
+    ingest_data()
+
+
 
