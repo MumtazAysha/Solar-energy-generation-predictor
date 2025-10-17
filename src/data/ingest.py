@@ -8,6 +8,7 @@ import pandas as pd
 import logging
 from pathlib import Path
 import re
+from datetime import datetime 
 from src.common.config import load_config
 from src.common.io_utils import write_parquet
 
@@ -307,27 +308,31 @@ def ingest_data():
         logger.error("\n❌ No data was successfully ingested")
         return
     
-    # Combine all dataframes
+        # Combine all dataframes
     logger.info(f"\n{'='*60}")
     logger.info(f"Combining data from {success_count} files...")
     df_combined = pd.concat(all_data, ignore_index=True)
     logger.info(f"Combined: {len(df_combined):,} rows")
     
-    # FILTER OUT INVALID YEARS (1970 and other errors)
+    # FILTER OUT INVALID YEARS (automatic range based on current year)
+    current_year = datetime.now().year  # ← NEW: Get current year
+    
     logger.info(f"Filtering out invalid dates...")
     before_filter = len(df_combined)
     df_combined = df_combined[
         (df_combined['Year'] >= 2018) & 
-        (df_combined['Year'] <= 2025)
+        (df_combined['Year'] <= current_year + 1)  # ← NEW: Dynamic upper limit
     ]
     after_filter = len(df_combined)
     removed = before_filter - after_filter
     if removed > 0:
         logger.warning(f"  Removed {removed:,} rows with invalid years")
+    logger.info(f"  Keeping years: 2018-{current_year + 1}")  # ← NEW: Show range
     logger.info(f"After filter: {len(df_combined):,} rows")
     
     # Check for duplicates
     logger.info(f"Checking for duplicates...")
+
     original_len = len(df_combined)
     df_combined = df_combined.drop_duplicates(subset=['District', 'datetime'])
     duplicates_removed = original_len - len(df_combined)
