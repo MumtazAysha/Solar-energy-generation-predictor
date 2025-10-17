@@ -10,7 +10,7 @@ def read_parquet(path):
     """Read parquet file and return DataFrame"""
     logger.info(f"Reading {path}" )
     df = pd.read_parquet(path)
-    logger.infoo(f"LOaded {len(df)} rows")
+    logger.info(f"LOaded {len(df)} rows")
     return df
 
 def write_parquet(df, path):
