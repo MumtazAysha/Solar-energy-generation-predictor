@@ -18,3 +18,5 @@ def cheeck_missing_values(df):
 
     missing = df.isnull().sum()
     missing_pct = (missing/len(df)) * 100
+    
+    critical_cols = ['Datetime', 'Date', 'Year', 'Month', 'District', 'Generation_kw']
