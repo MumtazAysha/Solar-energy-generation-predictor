@@ -137,3 +137,89 @@ def check_district_coverage(df):
         logger.info(f"    {district}: {n_days} days, {n_records:,} records ({min_date} to {max_date})")
     
     return district_stats
+
+def validate_data():
+    """Main validation function"""
+    cfg = load_config()
+    
+    bronze_path = Path(cfg.data_paths['bronze'])
+    silver_path = Path(cfg.data_paths['silver'])
+    silver_path.mkdir(parents=True, exist_ok=True)
+    
+    logger.info("="*60)
+    logger.info("STEP 2: VALIDATION (Bronze → Silver)")
+    logger.info("="*60)
+    
+    # Read Bronze data
+    bronze_file = bronze_path / "bronze_all_years.parquet"
+    if not bronze_file.exists():
+        logger.error(f"❌ Bronze file not found: {bronze_file}")
+        logger.info("Please run ingestion first: python -m src.data.ingest")
+        return
+    
+    df = read_parquet(bronze_file)
+    logger.info(f"Loaded {len(df):,} records from Bronze layer\n")
+    
+    # Run validation checks
+    validation_results = {}
+    
+    # 1. Missing values
+    validation_results['missing'] = check_missing_values(df)
+    print()
+    
+    # 2. Date ranges
+    validation_results['date_range'] = check_date_ranges(df)
+    print()
+    
+    # 3. Generation values
+    validation_results['generation_stats'] = check_generation_values(df)
+    print()
+    
+    # 4. Time coverage
+    validation_results['coverage'] = check_time_coverage(df)
+    print()
+    
+    # 5. District coverage
+    validation_results['district_stats'] = check_district_coverage(df)
+    print()
+    
+    # Basic cleaning: remove invalid rows
+    logger.info("Applying basic cleaning...")
+    original_len = len(df)
+    
+    # Remove rows with missing critical values
+    df = df.dropna(subset=['datetime', 'District', 'generation_kw'])
+    
+    # Remove negative generation values
+    df = df[df['generation_kw'] >= 0]
+    
+    # Remove duplicate datetime-district combinations
+    df = df.drop_duplicates(subset=['District', 'datetime'], keep='first')
+    
+    cleaned_len = len(df)
+    removed = original_len - cleaned_len
+    
+    if removed > 0:
+        logger.info(f"  Removed {removed:,} invalid rows ({(removed/original_len)*100:.2f}%)")
+    logger.info(f"  Clean data: {cleaned_len:,} rows")
+    
+    # Save to Silver
+    output_file = silver_path / "silver_all_years.parquet"
+    write_parquet(df, output_file)
+    
+    logger.info("\n" + "="*60)
+    logger.info("✅ VALIDATION COMPLETE")
+    logger.info("="*60)
+    logger.info(f"Input: {original_len:,} records")
+    logger.info(f"Output: {cleaned_len:,} records")
+    logger.info(f"Removed: {removed:,} records")
+    logger.info(f"Silver data saved to: {output_file}")
+    logger.info("="*60)
+
+
+if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
+    validate_data()
