@@ -92,3 +92,48 @@ def check_generation_values(df):
     
     return gen_stats
 
+def check_time_coverage(df):
+    """Check for gaps in time series"""
+    logger.info("Checking time coverage...")
+    
+    # Expected intervals per day (8:00 to 17:00, 5-minute intervals)
+    expected_intervals_per_day = 109  # (17:00 - 8:00) * 12 + 1
+    
+    # Group by date and district, count intervals
+    coverage = df.groupby(['District', 'Date']).size().reset_index(name='interval_count')
+    
+    # Find days with incomplete data
+    incomplete = coverage[coverage['interval_count'] < expected_intervals_per_day]
+    
+    if len(incomplete) > 0:
+        incomplete_pct = (len(incomplete) / len(coverage)) * 100
+        logger.warning(f"  ⚠️ {len(incomplete):,} district-days with incomplete data ({incomplete_pct:.2f}%)")
+        logger.info(f"    Example: {incomplete.iloc[0]['District']} on {incomplete.iloc[0]['Date'].date()} has {incomplete.iloc[0]['interval_count']} intervals")
+    else:
+        logger.info(f"  ✅ All district-days have complete data")
+    
+    return coverage
+
+
+def check_district_coverage(df):
+    """Check data availability per district"""
+    logger.info("Checking district coverage...")
+    
+    district_stats = df.groupby('District').agg({
+        'Date': ['min', 'max', 'nunique'],
+        'generation_kw': ['count', 'mean', 'std']
+    }).round(2)
+    
+    logger.info(f"  Districts found: {df['District'].nunique()}")
+    logger.info(f"  District coverage summary:")
+    
+    for district in sorted(df['District'].unique()):
+        district_data = df[df['District'] == district]
+        min_date = district_data['Date'].min().date()
+        max_date = district_data['Date'].max().date()
+        n_days = district_data['Date'].nunique()
+        n_records = len(district_data)
+        
+        logger.info(f"    {district}: {n_days} days, {n_records:,} records ({min_date} to {max_date})")
+    
+    return district_stats
