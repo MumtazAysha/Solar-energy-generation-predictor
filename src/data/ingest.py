@@ -7,7 +7,7 @@ import pandas as pd
 import logging
 from pathlib import Path
 from src.common.config import load_config
-from src.common.io_utils import write_paarquet, write_parquet
+from src.common.io_utils import  write_parquet
 
 logger = logging.getLogger(__name__)
 
