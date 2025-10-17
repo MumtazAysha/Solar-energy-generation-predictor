@@ -1,7 +1,7 @@
 """
 Data Ingestion Module
 Reads raw Excel files and converts to Bronze layer (long-format parquet)
-Handles both 2022 format and 2018-2021, 2023-2024 formats
+Handles both 2022 and 2018-2021, 2023-2024 formats
 """
 
 import pandas as pd
@@ -15,10 +15,27 @@ logger = logging.getLogger(__name__)
 
 
 def extract_district_from_filename(filename):
-    """Extract district name from various filename patterns"""
+    """
+    Extract district name from various filename patterns.
+    
+    Handles patterns like:
+    - "Annual Generation data in Ampara 2022.xlsx"
+    - "Colombo-2022.xlsx"
+    - "Generation Colombo 2022.xlsx"
+    
+    Args:
+        filename (str): Excel filename
+        
+    Returns:
+        str: District name
+    """
+    # Remove file extension
     name = filename.replace('.xlsx', '').replace('.xls', '')
+    
+    # Split by common delimiters
     parts = name.replace('-', ' ').replace('_', ' ').split()
     
+    # Known district names in Sri Lanka
     districts = [
         'Ampara', 'Anuradhapura', 'Badulla', 'Batticaloa', 'Colombo',
         'Galle', 'Gampaha', 'Hambantota', 'Jaffna', 'Kalutara',
@@ -28,13 +45,17 @@ def extract_district_from_filename(filename):
         'Trincomalee', 'Vavuniya'
     ]
     
+    # Find first matching district name in the filename
     for part in parts:
+        # Check exact match (case-insensitive)
         for district in districts:
             if part.lower() == district.lower():
                 return district
+            # Handle "NuwaraEliya" vs "Nuwara Eliya"
             if district.replace(' ', '').lower() == part.lower():
                 return district.replace(' ', '')
     
+    # If "in" keyword exists, take the word after it
     if 'in' in parts:
         in_index = parts.index('in')
         if in_index + 1 < len(parts):
@@ -48,7 +69,11 @@ def parse_time_column(col_name):
     Parse time column name to extract hour and minute.
     Handles formats: 8, 8.05, 08:00, 08:05, etc.
     
-    Returns: (hour, minute) tuple or None if not a time column
+    Args:
+        col_name: Column name
+        
+    Returns:
+        tuple: (hour, minute) or None if not a time column
     """
     col_str = str(col_name).strip()
     
@@ -76,23 +101,36 @@ def read_wide_excel(file_path):
     """
     Read wide-format Excel file with Date + time interval columns.
     Handles both 2022 and 2018-2021, 2023-2024 formats.
+    
+    Args:
+        file_path (Path): Path to Excel file
+        
+    Returns:
+        pd.DataFrame: Long-format dataframe with datetime column
     """
     logger.info(f"Reading {file_path.name}")
     
+    # Extract district
     district = extract_district_from_filename(file_path.name)
     logger.info(f"  Detected district: {district}")
     
+    # Read all sheets
     excel_file = pd.ExcelFile(file_path)
     sheet_names = excel_file.sheet_names
     
     # Filter out README sheets
-    data_sheets = [s for s in sheet_names if 'readme' not in s.lower() and 'info' not in s.lower()]
+    data_sheets = [
+        s for s in sheet_names 
+        if 'readme' not in s.lower() and 'info' not in s.lower()
+    ]
+    
     logger.info(f"  Found {len(sheet_names)} total sheets, processing {len(data_sheets)} data sheets")
     
     all_sheets_data = []
     
     for sheet_name in data_sheets:
         try:
+            # Read sheet
             df = pd.read_excel(file_path, sheet_name=sheet_name)
             df.columns = [str(c).strip() for c in df.columns]
             
@@ -118,8 +156,6 @@ def read_wide_excel(file_path):
             if not time_cols:
                 logger.warning(f"  ⚠️ Skipping sheet '{sheet_name}' - no time columns found")
                 continue
-            
-            logger.debug(f"  Sheet '{sheet_name}': {len(meta_cols)} metadata cols, {len(time_cols)} time cols")
             
             # Melt to long format
             df_long = df.melt(
@@ -160,7 +196,8 @@ def read_wide_excel(file_path):
                         if 'Day' in df_long.columns:
                             day = df_long['Day']
                         else:
-                            day = df_long['Date']
+                            # Date column contains day numbers (1, 2, 3, ...)
+                            day = pd.to_numeric(df_long['Date'], errors='coerce')
                         
                         # Reconstruct date
                         df_long['Date'] = pd.to_datetime(
@@ -204,7 +241,6 @@ def read_wide_excel(file_path):
             df_long = df_long.sort_values('datetime').reset_index(drop=True)
             
             all_sheets_data.append(df_long)
-            logger.debug(f"  ✓ Sheet '{sheet_name}': {len(df_long)} rows")
             
         except Exception as e:
             logger.warning(f"  ⚠️ Skipping sheet '{sheet_name}': {str(e)}")
@@ -222,25 +258,32 @@ def read_wide_excel(file_path):
 
 
 def ingest_data():
-    """Main ingestion function"""
+    """
+    Main ingestion function: reads all raw Excel files and creates Bronze parquet.
+    """
     cfg = load_config()
     
     raw_path = Path(cfg.data_paths['raw'])
     bronze_path = Path(cfg.data_paths['bronze'])
+    
+    # Create bronze directory if it doesn't exist
     bronze_path.mkdir(parents=True, exist_ok=True)
     
     logger.info("="*60)
     logger.info("STEP 1: INGESTION (Raw → Bronze)")
     logger.info("="*60)
     
+    # Find all Excel files in raw directory
     excel_files = sorted(list(raw_path.glob('*.xlsx')) + list(raw_path.glob('*.xls')))
     
     if not excel_files:
         logger.error(f"❌ No Excel files found in {raw_path}")
+        logger.info(f"Please add Excel files to {raw_path.absolute()}")
         return
     
     logger.info(f"Found {len(excel_files)} Excel files\n")
     
+    # Process each file
     all_data = []
     success_count = 0
     failed_files = []
@@ -264,10 +307,26 @@ def ingest_data():
         logger.error("\n❌ No data was successfully ingested")
         return
     
+    # Combine all dataframes
     logger.info(f"\n{'='*60}")
     logger.info(f"Combining data from {success_count} files...")
     df_combined = pd.concat(all_data, ignore_index=True)
+    logger.info(f"Combined: {len(df_combined):,} rows")
     
+    # FILTER OUT INVALID YEARS (1970 and other errors)
+    logger.info(f"Filtering out invalid dates...")
+    before_filter = len(df_combined)
+    df_combined = df_combined[
+        (df_combined['Year'] >= 2018) & 
+        (df_combined['Year'] <= 2025)
+    ]
+    after_filter = len(df_combined)
+    removed = before_filter - after_filter
+    if removed > 0:
+        logger.warning(f"  Removed {removed:,} rows with invalid years")
+    logger.info(f"After filter: {len(df_combined):,} rows")
+    
+    # Check for duplicates
     logger.info(f"Checking for duplicates...")
     original_len = len(df_combined)
     df_combined = df_combined.drop_duplicates(subset=['District', 'datetime'])
@@ -275,6 +334,7 @@ def ingest_data():
     if duplicates_removed > 0:
         logger.info(f"  Removed {duplicates_removed:,} duplicate records")
     
+    # Save to Bronze as parquet
     output_file = bronze_path / "bronze_all_years.parquet"
     write_parquet(df_combined, output_file)
     
@@ -297,6 +357,7 @@ def ingest_data():
 
 
 if __name__ == "__main__":
+    # Set up logging for standalone execution
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s'
