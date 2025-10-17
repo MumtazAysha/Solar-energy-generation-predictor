@@ -1,132 +1,122 @@
-#Solar Generation Forecasting Configuration
+# Solar Generation Forecasting Configuration
+project_name: "Solar Energy Generation Forecasting - Sri Lanka"
+description: "Time-series forecasting of solar PV generation across 25 districts (2018-2024)"
 
-project_name: "Solar Energy Generation Predictor"
-data_source: "Local CSV files from Public Utilities Commission of Sri Lanka"
-descriptioon: "Time-series forecasting f solar PV generation across 25 districts(2018-2024)"
-
-#Data configuration
+# Data configuration
 years:
--2018
--2019
--2020
--2021
--2022
--2023
--2024
+  - 2018
+  - 2019
+  - 2020
+  - 2021
+  - 2022
+  - 2023
+  - 2024
 
-#Primary year for training (can be changed for different experiments)
+# Primary year for training
 year: 2022
 
-#Train/test split
-train_fraction:0.8 
-test_fraction:0.2
+# Train/test split
+train_fraction: 0.8
 
-#Data paths
+# Data paths
 data_paths:
- raw: "data/raw"
- bronze: "data/bronze"
- silver: "data/silver"
- gold: "data/gold"
+  raw: "data/raw"
+  bronze: "data/bronze"
+  silver: "data/silver"
+  gold: "data/gold"
 
- #Output paths
- output_paths:
+# Output paths
+output_paths:
   models: "outputs/models"
   predictions: "outputs/predictions"
   metrics: "outputs/metrics"
-  plots: "ooutputs/plots"
+  plots: "outputs/plots"
 
-  #All 25 districts in Sri Lanka
-  -"Ampara"
-  -"Anuradhapura"
-  -"Badulla"
-  -"Batticaloa"
-  -"Colombo"
-  -"Galle"
-  -"Gampaha"
-  -"Hambantota"
-  -"Jaffna"
-  -"Kalutara"
-  -"Kandy"
-  -"Kegalle"
-  -"Kilinochchi"
-  -"Kurunegala"
-  -"Mannar"
-  -"Matale"
-  -"Matara"
-  -"Monaragala"
-  -"Mullaitivu"
-  -"NuwaraEliya"
-  -"Polonnaruwa"
-  -"Puttalam"
-  -"Ratnapura"
-  -"Trincomalee"
-  -"Vavuniya"
+# All 25 districts
+districts:
+  - "Ampara"
+  - "Anuradhapura"
+  - "Badulla"
+  - "Batticaloa"
+  - "Colombo"
+  - "Galle"
+  - "Gampaha"
+  - "Hambantota"
+  - "Jaffna"
+  - "Kalutara"
+  - "Kandy"
+  - "Kegalle"
+  - "Kilinochchi"
+  - "Kurunegala"
+  - "Mannar"
+  - "Matale"
+  - "Matara"
+  - "Monaragala"
+  - "Mullaitivu"
+  - "Nuwara Eliya"
+  - "Polonnaruwa"
+  - "Puttalam"
+  - "Ratnapura"
+  - "Trincomalee"
+  - "Vavuniya"
 
-#Model configuratin
+# Model configuration
 model:
- type: "RandomForestRegression" #options: "RandoomForest", "XGBoost", "LSTM"
- params: 
-  n_estimators: 100
-  max_depth: 15
-  min_samples_split: 5
-  min_samples_leaf: 2
-  random_state: 42
-  n_jobs: -1
-  verbose: 1
-
-  #Alternative  mdel configs
-  #XGBost configuration
-  xgbst_params:
-    n_estiimators: 100
-    max_depth: 10
-    learning_rate: 0.1
-    subsample: 0.8
-    colsample_bytree: 0.8
+  type: "RandomForest"
+  params:
+    n_estimators: 100
+    max_depth: 15
+    min_samples_split: 5
+    min_samples_leaf: 2
     random_state: 42
     n_jobs: -1
+    verbose: 1
 
-    #Feature engineering confguration
-    features:
-      #Tempral features:
-      temporal:
-        - "hour"
-        - "minute"
-        - "day_of_year"
-        - "day_of_week"
-        - "is_weekend"
-        - "minute_of_day"
-        - "month"
-        - "season"
-        - "hour_sin"
-        - "hour_cos"
-        - "doy_sin"
-        - "doy_cos"
+# XGBoost configuration
+xgboost_params:
+  n_estimators: 100
+  max_depth: 10
+  learning_rate: 0.1
+  subsample: 0.8
+  colsample_bytree: 0.8
+  random_state: 42
+  n_jobs: -1
 
-# Solar position features
+# Feature engineering
+features:
+  temporal:
+    - "hour"
+    - "minute"
+    - "day_of_year"
+    - "day_of_week"
+    - "is_weekend"
+    - "minute_of_day"
+    - "month"
+    - "season"
+    - "hour_sin"
+    - "hour_cos"
+    - "doy_sin"
+    - "doy_cos"
   solar:
     - "solar_elev_approx"
-  
-  # Lag features (in 5-minute intervals)
-  lags: [1, 12, 24, 36]  # 5min, 1hr, 2hr, 3hr ago
-  
-  # Rolling window features
+  lags: [1, 12, 24, 36]
   rolling:
-    windows: [6, 12, 24]  # 30min, 1hr, 2hr windows
-    
-# Data quality thresholds
+    windows: [6, 12, 24]
+
+# Data quality
 data_quality:
-  max_missing_pct: 5.0  # Maximum allowed missing data percentage
-  min_generation: 0.0   # Minimum valid generation value
-  max_generation: 2000.0  # Maximum valid generation value (kW for 1MWp)
+  max_missing_pct: 5.0
+  min_generation: 0.0
+  max_generation: 2000.0
 
 # Logging
 logging:
-  level: "INFO"  # Options: DEBUG, INFO, WARNING, ERROR
+  level: "INFO"
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
-# Deployment settings (optional)
+# Deployment
 deployment:
   docker_image: "solar-forecast:latest"
   timezone: "Asia/Colombo"
-  latitude: 7.8731  # Sri Lanka approximate center
+  latitude: 7.8731
   longitude: 80.7718
