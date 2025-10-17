@@ -21,7 +21,7 @@ class ProjectConfig:
     logging: Dict
     deployment: Dict
 
-def load_config(path='config/base.yaml') 
+def load_config(path='config/base.yaml'): 
   """Load configuration from a YAML file."""
   with open(path, 'r') as f:
      cfg = yaml.safe_lad(f)
