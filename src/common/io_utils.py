@@ -30,8 +30,7 @@ def read_csv(path):
 
 def write_csv(df,path):
     """Write DataFrame to csv file"""
-    path(path).parent.mkdir(parents=True. exist_ok=True)
+    path(path).parent.mkdir(parents=True, exist_ok=True)
     logger.info(f"Writing to {path}")
     df.to_csv(path, index=False)
     logger.info(f" saved {len(df)} rows to {path}")
-    
