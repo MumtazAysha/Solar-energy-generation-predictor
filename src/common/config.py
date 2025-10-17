@@ -24,5 +24,5 @@ class ProjectConfig:
 def load_config(path='config/base.yaml'): 
   """Load configuration from a YAML file."""
   with open(path, 'r') as f:
-     cfg = yaml.safe_lad(f)
+     cfg = yaml.safe_load(f)
   return ProjectConfig(**cfg)
