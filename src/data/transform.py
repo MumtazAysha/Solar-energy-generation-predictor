@@ -88,3 +88,13 @@ def transform_data():
     logger.info("="*60)
     logger.info("STEP 3: TRANSFORMATION (Silver → Gold)")
     logger.info("="*60)
+
+    # Read Silver data
+    silver_file = silver_path / "silver_all_years.parquet"
+    if not silver_file.exists():
+        logger.error(f"❌ Silver file not found: {silver_file}")
+        logger.info("Please run validation first: python -m src.data.validate")
+        return
+    
+    df = read_parquet(silver_file)
+    logger.info(f"Loaded {len(df):,} records from Silver layer\n")
