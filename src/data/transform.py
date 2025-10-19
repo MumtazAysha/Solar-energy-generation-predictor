@@ -115,3 +115,9 @@ def transform_data():
     logger.info(f"  ✅ Sorted by District and datetime")
     print()
     
+
+    # Show feature summary
+    logger.info("Feature summary:")
+    logger.info(f"  Total features: {len(df.columns)}")
+    logger.info(f"  Columns: {', '.join(df.columns.tolist())}")
+    print()
