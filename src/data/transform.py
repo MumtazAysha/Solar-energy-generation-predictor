@@ -25,7 +25,7 @@ def add_temporal_features(df):
     # Basic temporal features
     df['day_of_year'] = df['datetime'].dt.dayofyear
     df['day_of_week'] = df['datetime'].dt.dayofweek  # 0=Mon, 6=Sun
-    df['is_weekend'] = (df['day_of_week'] >= 5).astype(int)
+    df['is_weekend'] = (df['day_of_week'] >= 5).astype(int) 
     df['minute_of_day'] = df['hour'] * 60 + df['minute']
     df['season'] = (df['Month'] % 12 // 3 + 1)  # 1..4
 
