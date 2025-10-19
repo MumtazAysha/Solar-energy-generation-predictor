@@ -109,3 +109,9 @@ def transform_data():
     df = add_solar_features(df)
     print()
     
+    # Sort by district and datetime
+    logger.info("Sorting data...")
+    df = df.sort_values(['District', 'datetime']).reset_index(drop=True)
+    logger.info(f"  ✅ Sorted by District and datetime")
+    print()
+    
