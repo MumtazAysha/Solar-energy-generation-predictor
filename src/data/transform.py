@@ -11,17 +11,27 @@ logger = logging.getLogger(__name__)
 def add_temporal_features(df):
     """Add basic temporal features"""
     logger.info("Adding temporal features...")
-    
+
+    # Ensure datetime is a proper dtype
+    if not np.issubdtype(df['datetime'].dtype, np.datetime64):
+        df['datetime'] = pd.to_datetime(df['datetime'], errors='coerce')
+
+    # Reconstruct hour/minute if missing
+    if 'hour' not in df.columns:
+        df['hour'] = df['datetime'].dt.hour
+    if 'minute' not in df.columns:
+        df['minute'] = df['datetime'].dt.minute
+
     # Basic temporal features
     df['day_of_year'] = df['datetime'].dt.dayofyear
-    df['day_of_week'] = df['datetime'].dt.dayofweek  # 0=Monday, 6=Sunday
+    df['day_of_week'] = df['datetime'].dt.dayofweek  # 0=Mon, 6=Sun
     df['is_weekend'] = (df['day_of_week'] >= 5).astype(int)
     df['minute_of_day'] = df['hour'] * 60 + df['minute']
-    df['season'] = (df['Month'] % 12 // 3 + 1)  # 1=Winter, 2=Spring, 3=Summer, 4=Fall
+    df['season'] = (df['Month'] % 12 // 3 + 1)  # 1..4
 
-    logger.info(f"  ✅ Added: day_of_year, day_of_week, is_weekend, minute_of_day, season")
-    
+    logger.info("  ✅ Added: day_of_year, day_of_week, is_weekend, minute_of_day, season")
     return df
+
 
 def add_cyclical_features(df):
     """Add cyclical encoding for temporal features (sin/cos)"""
