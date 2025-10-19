@@ -98,3 +98,14 @@ def transform_data():
     
     df = read_parquet(silver_file)
     logger.info(f"Loaded {len(df):,} records from Silver layer\n")
+
+    # Apply transformations
+    df = add_temporal_features(df)
+    print()
+    
+    df = add_cyclical_features(df)
+    print()
+    
+    df = add_solar_features(df)
+    print()
+    
