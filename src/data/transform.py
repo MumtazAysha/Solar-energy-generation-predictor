@@ -38,3 +38,41 @@ def add_cyclical_features(df):
     logger.info(f"  ✅ Added: hour_sin, hour_cos, doy_sin, doy_cos")
     
     return df
+
+def add_solar_features(df):
+    """Add approximate solar elevation angle"""
+    logger.info("Adding solar features...")
+    
+    # Simplified solar elevation angle approximation
+    # This is a rough approximation for Sri Lanka (latitude ~7°N)
+    # More accurate calculation would require solar position library
+    
+    # Hour angle: how far the sun is from solar noon
+    solar_noon = 12.0
+    hour_angle = (df['hour'] + df['minute']/60 - solar_noon) * 15  # degrees
+    
+    # Day angle: variation through the year
+    day_angle = 2 * np.pi * (df['day_of_year'] - 1) / 365
+    
+    # Solar declination (approximate)
+    declination = 23.45 * np.sin(day_angle)
+    
+    # For Sri Lanka (latitude ~7°N)
+    latitude = 7.0
+    
+    # Solar elevation angle (simplified)
+    # elevation = arcsin(sin(lat) * sin(dec) + cos(lat) * cos(dec) * cos(hour_angle))
+    elevation = np.arcsin(
+        np.sin(np.radians(latitude)) * np.sin(np.radians(declination)) +
+        np.cos(np.radians(latitude)) * np.cos(np.radians(declination)) * np.cos(np.radians(hour_angle))
+    )
+    
+    df['solar_elev_approx'] = np.degrees(elevation)
+    
+    # Clip to reasonable range (sun below horizon = 0)
+    df['solar_elev_approx'] = df['solar_elev_approx'].clip(lower=0)
+    
+    logger.info(f"  ✅ Added: solar_elev_approx")
+    logger.info(f"  Solar elevation range: {df['solar_elev_approx'].min():.1f}° to {df['solar_elev_approx'].max():.1f}°")
+    
+    return df
