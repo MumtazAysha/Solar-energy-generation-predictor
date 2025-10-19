@@ -76,3 +76,15 @@ def add_solar_features(df):
     logger.info(f"  Solar elevation range: {df['solar_elev_approx'].min():.1f}° to {df['solar_elev_approx'].max():.1f}°")
     
     return df
+
+def transform_data():
+    """Main transformation function"""
+    cfg = load_config()
+    
+    silver_path = Path(cfg.data_paths['silver'])
+    gold_path = Path(cfg.data_paths['gold'])
+    gold_path.mkdir(parents=True, exist_ok=True)
+    
+    logger.info("="*60)
+    logger.info("STEP 3: TRANSFORMATION (Silver → Gold)")
+    logger.info("="*60)
