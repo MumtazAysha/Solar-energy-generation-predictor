@@ -121,3 +121,16 @@ def transform_data():
     logger.info(f"  Total features: {len(df.columns)}")
     logger.info(f"  Columns: {', '.join(df.columns.tolist())}")
     print()
+
+    # Save to Gold
+    output_file = gold_path / "gold_all_years.parquet"
+    write_parquet(df, output_file)
+    
+    logger.info("="*60)
+    logger.info("✅ TRANSFORMATION COMPLETE")
+    logger.info("="*60)
+    logger.info(f"Records: {len(df):,}")
+    logger.info(f"Features: {len(df.columns)}")
+    logger.info(f"Output: {output_file}")
+    logger.info("="*60)
+    
