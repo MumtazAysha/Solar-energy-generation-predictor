@@ -66,33 +66,34 @@ def add_rolling_features(df: pd.DataFrame, windows: List[int]) -> pd.DataFrame:
 
 
 def select_feature_columns(df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
-    """
-    Selects model feature columns based on what exists in the DataFrame.
-    Returns (df_selected, feature_list).
-    """
     base_features = [
         'hour', 'minute', 'day_of_year', 'day_of_week', 'is_weekend',
         'minute_of_day', 'season', 'hour_sin', 'hour_cos', 'doy_sin', 'doy_cos',
         'solar_elev_approx'
     ]
 
-    # Dynamically include all lag and rolling columns present
     lag_cols = [c for c in df.columns if c.startswith('generation_kw_lag')]
     roll_cols = [c for c in df.columns if c.startswith('gen_roll_')]
     ema_cols = [c for c in df.columns if c.startswith('gen_ema_')]
 
-    # Optional categorical encoding (label encoded per District with target_enc_idx)
-    # For tree-based models, using raw categorical as string can also work if handled upstream.
-    # Here, keep District string; encoding can be done in training.
-    cat_cols = ['District']
+    # Keep District only as a metadata column; do NOT include it again in feature_cols
+    cat_cols: List[str] = []  # or leave it out of features entirely here
 
     feature_cols = [c for c in base_features + lag_cols + roll_cols + ema_cols + cat_cols if c in df.columns]
 
     keep_cols = ['datetime', 'Date', 'Year', 'Month', 'Day', 'District', 'generation_kw'] + feature_cols
+
+    # Deduplicate while preserving order
+    keep_cols = list(dict.fromkeys(keep_cols))
+
     df_selected = df[keep_cols].copy()
+
+    # Guarantee unique columns (belt-and-suspenders)
+    df_selected = df_selected.loc[:, ~df_selected.columns.duplicated()]
 
     logger.info(f"Feature columns selected: {len(feature_cols)}")
     return df_selected, feature_cols
+
 
 
 def drop_na_after_features(df: pd.DataFrame) -> pd.DataFrame:
