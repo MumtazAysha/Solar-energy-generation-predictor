@@ -133,4 +133,19 @@ def transform_data():
     logger.info(f"Features: {len(df.columns)}")
     logger.info(f"Output: {output_file}")
     logger.info("="*60)
+
+    # Show sample
+    logger.info("\nSample of transformed data:")
+    sample_cols = ['datetime', 'District', 'generation_kw', 'hour', 'day_of_year', 
+                   'solar_elev_approx', 'hour_sin', 'is_weekend']
+    logger.info(f"\n{df[sample_cols].head(3).to_string()}")
+
+
+if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
+    transform_data()
+
     
