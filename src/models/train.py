@@ -50,15 +50,18 @@ def encode_district(df):
     
     return df, le
 
-def split_data(df, feature_cls, cfg):
-    """Split data into tarin/validation/test sets"""
+def split_data(df, feature_cols, cfg):
+    """Split data into train/validation/test sets"""
     logger.info("Splitting data into train/val/test sets...")
-
-    # Add District_encoded to features
-    if 'District_encoded' in df.columns and 'District_encoded' not in feature_cols:
-        feature_cols = feature_cols + ['District_encoded']
     
-    X = df[feature_cols]
+    # Work on a copy to avoid UnboundLocalError
+    feature_cols_final = feature_cols.copy() if isinstance(feature_cols, list) else list(feature_cols)
+    
+    # Add District_encoded to features if it exists and isn't already included
+    if 'District_encoded' in df.columns and 'District_encoded' not in feature_cols_final:
+        feature_cols_final.append('District_encoded')
+    
+    X = df[feature_cols_final]
     y = df['target_kw']
     
     # Split: 70% train, 15% validation, 15% test
@@ -67,11 +70,11 @@ def split_data(df, feature_cls, cfg):
     val_frac = 0.15
     
     # Sort by datetime for temporal split
-    df = df.sort_values('datetime')
-    X = df[feature_cols]
-    y = df['target_kw']
+    df_sorted = df.sort_values('datetime')
+    X = df_sorted[feature_cols_final]
+    y = df_sorted['target_kw']
     
-    n = len(df)
+    n = len(df_sorted)
     train_end = int(n * train_frac)
     val_end = int(n * (train_frac + val_frac))
     
