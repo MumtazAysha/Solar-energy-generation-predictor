@@ -3,7 +3,7 @@ import numpy as np
 import logging 
 import joblib
 from pathlib import Path
-from sklearn.ensemble import RandmForeestRegressor
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
@@ -38,7 +38,7 @@ def load_and_prepare_data(cfg):
 
    return df, feature_cols, exclude_cols
 
-def encode_district(df)
+def encode_district(df):
     """Encode District as numerical category"""
     logger.info("Encoding District feature...")
 
@@ -131,7 +131,132 @@ def evaluate_predictions(y_true, y_pred, dataset_name="Dataset"):
     
     return {'mae': mae, 'rmse': rmse, 'r2': r2, 'mape': mape}
 
+def save_model_and_artifacts(model, label_encoder, feature_cols, metrics, cfg):
+    """Save trained model and related artifacts"""
+    logger.info("Saving model and artifacts...")
+    
+    models_path = Path(cfg.output_paths['models'])
+    models_path.mkdir(parents=True, exist_ok=True)
+    
+    # Save model
+    model_file = models_path / "random_forest_model.pkl"
+    joblib.dump(model, model_file)
+    logger.info(f"  Model saved: {model_file}")
+    
+    # Save label encoder
+    encoder_file = models_path / "district_encoder.pkl"
+    joblib.dump(label_encoder, encoder_file)
+    logger.info(f"  Encoder saved: {encoder_file}")
+    
+    # Save feature names
+    features_file = models_path / "feature_names.txt"
+    with open(features_file, 'w') as f:
+        f.write('\n'.join(feature_cols))
+    logger.info(f"  Features saved: {features_file}")
+    
+    # Save metrics
+    metrics_file = models_path / "training_metrics.txt"
+    with open(metrics_file, 'w') as f:
+        f.write("Training Metrics\n")
+        f.write("="*50 + "\n")
+        for dataset, metric_dict in metrics.items():
+            f.write(f"\n{dataset}:\n")
+            for metric, value in metric_dict.items():
+                f.write(f"  {metric.upper()}: {value:.4f}\n")
+    logger.info(f"  Metrics saved: {metrics_file}")
+    
+    # Feature importance
+    if hasattr(model, 'feature_importances_'):
+        importance_df = pd.DataFrame({
+            'feature': feature_cols,
+            'importance': model.feature_importances_
+        }).sort_values('importance', ascending=False)
+        
+        importance_file = models_path / "feature_importance.csv"
+        importance_df.to_csv(importance_file, index=False)
+        logger.info(f"  Feature importance saved: {importance_file}")
+        
+        # Log top 10 features
+        logger.info("\n  Top 10 Important Features:")
+        for idx, row in importance_df.head(10).iterrows():
+            logger.info(f"    {row['feature']}: {row['importance']:.4f}")
 
+
+def train_pipeline():
+    """Main training pipeline"""
+    cfg = load_config()
+    
+    logger.info("="*60)
+    logger.info("STEP 5: MODEL TRAINING")
+    logger.info("="*60)
+    
+    # Load data
+    df, feature_cols, exclude_cols = load_and_prepare_data(cfg)
+    if df is None:
+        return
+    
+    print()
+    
+    # Encode District
+    df, label_encoder = encode_district(df)
+    print()
+    
+    # Split data
+    X_train, X_val, X_test, y_train, y_val, y_test = split_data(df, feature_cols, cfg)
+    print()
+    
+    # Train model
+    model = train_model(X_train, y_train, cfg)
+    print()
+    
+    # Evaluate on all splits
+    logger.info("Evaluating model performance...")
+    
+    # Training set
+    y_train_pred = model.predict(X_train)
+    train_metrics = evaluate_predictions(y_train, y_train_pred, "Training")
+    print()
+    
+    # Validation set
+    y_val_pred = model.predict(X_val)
+    val_metrics = evaluate_predictions(y_val, y_val_pred, "Validation")
+    print()
+    
+    # Test set
+    y_test_pred = model.predict(X_test)
+    test_metrics = evaluate_predictions(y_test, y_test_pred, "Test")
+    print()
+    
+    # Save everything
+    metrics = {
+        'train': train_metrics,
+        'validation': val_metrics,
+        'test': test_metrics
+    }
+    
+    save_model_and_artifacts(
+        model, 
+        label_encoder, 
+        X_train.columns.tolist(), 
+        metrics, 
+        cfg
+    )
+    
+    logger.info("\n" + "="*60)
+    logger.info("✅ TRAINING COMPLETE")
+    logger.info("="*60)
+    logger.info(f"Model saved to: {Path(cfg.output_paths['models']) / 'random_forest_model.pkl'}")
+    logger.info(f"Test R²: {test_metrics['r2']:.4f}")
+    logger.info(f"Test MAE: {test_metrics['mae']:.2f} kW")
+    logger.info("="*60)
+
+
+if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
+    train_pipeline()
 
 
 
