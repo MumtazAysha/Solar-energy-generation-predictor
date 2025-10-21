@@ -97,6 +97,41 @@ def split_data(df, feature_cls, cfg):
     
     return X_train, X_val, X_test, y_train, y_val, y_test
 
+def train_model(X_train, y_train, cfg):
+    """Train RandomForest model"""
+    logger.info("Training RandomForest model...")
+    
+    model_params = cfg.model['params']
+    logger.info(f"  Parameters: {model_params}")
+    
+    model = RandomForestRegressor(**model_params)
+    
+    logger.info("  Fitting model (this may take a few minutes)...")
+    model.fit(X_train, y_train)
+    
+    logger.info("  ✅ Model trained successfully")
+    
+    return model
+
+
+def evaluate_predictions(y_true, y_pred, dataset_name="Dataset"):
+    """Calculate and log evaluation metrics"""
+    mae = mean_absolute_error(y_true, y_pred)
+    rmse = np.sqrt(mean_squared_error(y_true, y_pred))
+    r2 = r2_score(y_true, y_pred)
+    
+    # Mean Absolute Percentage Error (MAPE)
+    mape = np.mean(np.abs((y_true - y_pred) / (y_true + 1e-10))) * 100
+    
+    logger.info(f"  {dataset_name} Metrics:")
+    logger.info(f"    MAE:  {mae:.2f} kW")
+    logger.info(f"    RMSE: {rmse:.2f} kW")
+    logger.info(f"    R²:   {r2:.4f}")
+    logger.info(f"    MAPE: {mape:.2f}%")
+    
+    return {'mae': mae, 'rmse': rmse, 'r2': r2, 'mape': mape}
+
+
 
 
 
