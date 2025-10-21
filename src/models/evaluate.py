@@ -94,10 +94,16 @@ def evaluate_model():
     logger.info(f"Loaded {len(features_df):,} feature records for evaluation")
 
     # Encode district
+    # Encode if missing, but don't add to features if model wasn't trained with it
     if 'District_encoded' not in features_df:
-        features_df['District_encoded'] = le.transform(features_df['District'])
-        if 'District_encoded' not in feature_cols:
-            feature_cols.append('District_encoded')
+     features_df['District_encoded'] = le.transform(features_df['District'])
+
+# Only keep exactly the feature names the model was trained with
+# (Training already saved feature_names.txt)
+
+    feature_cols = Path(features_file).read_text().splitlines()
+    X = features_df[feature_cols]   # Ensure identical columns
+
 
     # Predict
     logger.info("Generating predictions...")
