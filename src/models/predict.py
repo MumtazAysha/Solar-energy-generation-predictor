@@ -145,19 +145,34 @@ def main():
             print(f"{style} Predicted generation for {district} at {dt_str}: {y_pred:.2f} kW")
         except Exception as e:
             print(f"Error: {e}")
-
 if __name__ == "__main__":
-    main()
-    cfg = load_config()
-    model, le, feature_cols = load_artifacts(cfg)
-    gold_features_path = Path(cfg.data_paths['gold']) / "gold_features_all_years.parquet"
-    
-    date_str = input("Enter date (YYYY-MM-DD): ")
-    districts = le.classes_
-    all_results = []
-    for district in districts:
-        df_pred = predict_day(model, le, feature_cols, district, date_str, gold_features_path)
-        df_pred.to_csv(f"outputs/models/pred_day_{district}_{date_str}.csv", index=False)
-        all_results.append(df_pred)
-    all_df = pd.concat(all_results)
-    all_df.to_csv(f"outputs/models/pred_all_{date_str}.csv", index=False)
+    mode = input("Choose mode: [1] Interactive  [2] Full-day export  [q] Quit : ").strip().lower()
+    if mode in {'q', 'quit', 'exit'}:
+        print("Exiting.")
+    elif mode == '1':
+        main()  # interactive on-demand prediction
+    elif mode == '2':
+        cfg = load_config()
+        model, le, feature_cols = load_artifacts(cfg)
+        gold_features_path = Path(cfg.data_paths['gold']) / "gold_features_all_years.parquet"
+
+        date_str = input("Enter date (YYYY-MM-DD): ").strip()
+        districts = le.classes_
+        all_results = []
+
+        print(f"🕒 Generating CSV predictions for {date_str} across {len(districts)} districts...")
+        for district in districts:
+            print(f" → {district} ... ", end="", flush=True)
+            df_pred = predict_day(model, le, feature_cols, district, date_str, gold_features_path)
+            out_file = f"outputs/models/pred_day_{district}_{date_str}.csv"
+            df_pred.to_csv(out_file, index=False)
+            all_results.append(df_pred)
+            print("done")
+
+        all_df = pd.concat(all_results, ignore_index=True)
+        merged = f"outputs/models/pred_all_{date_str}.csv"
+        all_df.to_csv(merged, index=False)
+        print(f"\n✅ All finished! Combined file saved to: {merged}")
+    else:
+        print("Invalid choice.")
+
