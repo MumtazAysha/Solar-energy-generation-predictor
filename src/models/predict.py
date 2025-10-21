@@ -26,7 +26,14 @@ def build_feature_row(target_dt, district, le, gold_features_path):
     nearest = gold_df[(gold_df['District'] == district) &
                       (gold_df['datetime'] == prev_dt)]
     if nearest.empty:
-        raise ValueError("No matching grid data for that date/time/district, adjust date or use an available interval.")
+        # fallback dummy example using the first row of that district
+        district_ref = gold_df[gold_df['District'] == district]
+        if district_ref.empty:
+            raise ValueError(f"No data available for district {district}")
+        row = district_ref.iloc[0].copy()
+    else:
+        row = nearest.iloc[0].copy()
+
     row = nearest.iloc[0].copy()
     # Update time features for the requested timestamp
     row['datetime'] = pd.Timestamp(target_dt)
