@@ -148,16 +148,16 @@ def main():
 
 if __name__ == "__main__":
     main()
-    ##cfg = load_config()
-    ##model, le, feature_cols = load_artifacts(cfg)
-    ##gold_features_path = Path(cfg.data_paths['gold']) / "gold_features_all_years.parquet"
+    cfg = load_config()
+    model, le, feature_cols = load_artifacts(cfg)
+    gold_features_path = Path(cfg.data_paths['gold']) / "gold_features_all_years.parquet"
     
-    ##date_str = input("Enter date (YYYY-MM-DD): ")
-    ##districts = le.classes_
-    ##all_results = []
-    ##for district in districts:
-        ##df_pred = predict_day(model, le, feature_cols, district, date_str, gold_features_path)
-        ##df_pred.to_csv(f"outputs/models/pred_day_{district}_{date_str}.csv", index=False)
-        ##all_results.append(df_pred)
-    ##all_df = pd.concat(all_results)
-    ##all_df.to_csv(f"outputs/models/pred_all_{date_str}.csv", index=False)
+    date_str = input("Enter date (YYYY-MM-DD): ")
+    districts = le.classes_
+    all_results = []
+    for district in districts:
+        df_pred = predict_day(model, le, feature_cols, district, date_str, gold_features_path)
+        df_pred.to_csv(f"outputs/models/pred_day_{district}_{date_str}.csv", index=False)
+        all_results.append(df_pred)
+    all_df = pd.concat(all_results)
+    all_df.to_csv(f"outputs/models/pred_all_{date_str}.csv", index=False)
