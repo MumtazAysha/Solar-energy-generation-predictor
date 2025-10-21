@@ -38,6 +38,18 @@ def load_and_prepare_data(cfg):
 
    return df, feature_cols, exclude_cols
 
+def encode_district(df)
+    """Encode District as numerical category"""
+    logger.info("Encoding District feature...")
+
+    le = LabelEncoder()
+    df['Dstrict_encoded'] = le.fit_transform(df['District'])
+
+    logger.info(f"Districts encoded: {len(le.classes_)} unique values")
+    logger.info(f"  Mapping: {dict(zip(le.classes_, le.transform(le.classes_)))}")
+    
+    return df, le
+
 
 
 
