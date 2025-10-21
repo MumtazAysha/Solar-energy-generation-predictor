@@ -50,6 +50,54 @@ def encode_district(df)
     
     return df, le
 
+def split_data(df, feature_cls, cfg):
+    """Split data into tarin/validation/test sets"""
+    logger.info("Splitting data into train/val/test sets...")
+
+    # Add District_encoded to features
+    if 'District_encoded' in df.columns and 'District_encoded' not in feature_cols:
+        feature_cols = feature_cols + ['District_encoded']
+    
+    X = df[feature_cols]
+    y = df['target_kw']
+    
+    # Split: 70% train, 15% validation, 15% test
+    # Use temporal split to avoid data leakage
+    train_frac = cfg.train_fraction  # 0.7 from config
+    val_frac = 0.15
+    
+    # Sort by datetime for temporal split
+    df = df.sort_values('datetime')
+    X = df[feature_cols]
+    y = df['target_kw']
+    
+    n = len(df)
+    train_end = int(n * train_frac)
+    val_end = int(n * (train_frac + val_frac))
+    
+    X_train = X.iloc[:train_end]
+    y_train = y.iloc[:train_end]
+    
+    X_val = X.iloc[train_end:val_end]
+    y_val = y.iloc[train_end:val_end]
+    
+    X_test = X.iloc[val_end:]
+    y_test = y.iloc[val_end:]
+    
+    logger.info(f"  Train: {len(X_train):,} samples ({train_frac*100:.0f}%)")
+    logger.info(f"  Validation: {len(X_val):,} samples ({val_frac*100:.0f}%)")
+    logger.info(f"  Test: {len(X_test):,} samples ({(1-train_frac-val_frac)*100:.0f}%)")
+    
+    # Check for NaN
+    if X_train.isna().any().any():
+        logger.warning("⚠️ Training data contains NaN values, dropping...")
+        mask = ~X_train.isna().any(axis=1)
+        X_train = X_train[mask]
+        y_train = y_train[mask]
+    
+    return X_train, X_val, X_test, y_train, y_val, y_test
+
+
 
 
 
