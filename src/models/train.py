@@ -15,3 +15,15 @@ from src.common.io_utils import read_parquet
 
 logger = logging.getLogger(__name__)
 
+def load_and_prepare_data(cfg):
+   """Load feature-engineered data and prepare for training"""
+   logger.info("Loading feature data...")
+    
+   gold_path = Path(cfg.data_paths['gold'])
+   features_file = gold_path / "gold_features_all_years.parquet"
+    
+   if not features_file.exists():
+        logger.error(f"❌ Features file not found: {features_file}")
+        logger.info("Please run feature engineering first: python -m src.features.builder")
+        return None, None, None
+
