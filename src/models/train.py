@@ -27,3 +27,17 @@ def load_and_prepare_data(cfg):
         logger.info("Please run feature engineering first: python -m src.features.builder")
         return None, None, None
 
+   df = read_parquet(features_file)
+   logger.info(f"Loaded {len(df):,} records")
+
+   #Identify feature columns
+   exclude_cols = ['datetime', 'Date', 'Year', 'Month', 'Day', 'target_kw', 'District']
+   feature_cols = [c for c in df.columns if c not in exclude_cols]
+
+   logger.info(f"Feature columns: {len(feature_cols)}")
+
+   return df, feature_cols, exclude_cols
+
+
+
+
