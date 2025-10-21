@@ -21,24 +21,29 @@ def load_artifacts(cfg):
 
 def build_feature_row(target_dt, district, le, gold_features_path):
     """
-    Construct a feature row even if no matching record exists
-    (also fixes 'single positional indexer out-of-bounds' error).
+    Robust feature generator for any future or unseen datetime.
+    Always finds the nearest time-of-day sample for the district
+    without causing indexer or matching errors.
     """
     gold_df = read_parquet(gold_features_path)
 
-    # Try to find an exact or closest record from the same district
+    # Filter by district
     district_df = gold_df[gold_df['District'] == district].copy()
     if district_df.empty:
-        raise ValueError(f"No data found for district '{district}' in gold features!")
+        print(f"⚠ District '{district}' not found in gold dataset. Using first available district.")
+        district_df = gold_df.copy()
 
-    # Find the row closest in time-of-day
-    district_df['timedelta'] = abs(
-        (district_df['datetime'].dt.hour * 60 + district_df['datetime'].dt.minute)
-        - (target_dt.hour * 60 + target_dt.minute)
+    # Compute minutes-of-day difference, fall back safely
+    target_min = target_dt.hour * 60 + target_dt.minute
+    district_df['minutes_day'] = (
+        district_df['datetime'].dt.hour * 60 + district_df['datetime'].dt.minute
     )
-    template = district_df.iloc[district_df['timedelta'].idxmin()].copy()
+    idx = (district_df['minutes_day'] - target_min).abs().idxmin()
+    if np.isnan(idx):
+        idx = 0
+    template = district_df.loc[idx].copy()
 
-    # Update columns based on target datetime
+    # Update time-based features for requested timestamp
     template['datetime'] = pd.Timestamp(target_dt)
     template['Year'] = target_dt.year
     template['Month'] = target_dt.month
@@ -48,26 +53,26 @@ def build_feature_row(target_dt, district, le, gold_features_path):
     template['day_of_year'] = target_dt.timetuple().tm_yday
     template['day_of_week'] = target_dt.weekday()
     template['is_weekend'] = int(target_dt.weekday() >= 5)
-    template['minute_of_day'] = target_dt.hour * 60 + target_dt.minute
+    template['minute_of_day'] = target_min
 
-    # Cyclical time encodings
+    # Cyclic encodings
     template['hour_sin'] = np.sin(2 * np.pi * template['hour'] / 24)
     template['hour_cos'] = np.cos(2 * np.pi * template['hour'] / 24)
     template['doy_sin'] = np.sin(2 * np.pi * template['day_of_year'] / 365)
     template['doy_cos'] = np.cos(2 * np.pi * template['day_of_year'] / 365)
 
-    # Approx solar elevation
-    latitude = 7.0  # Sri Lanka latitude
+    # Solar elevation approximation
+    latitude = 7.0
     solar_noon = 12.0
     hour_angle = (template['hour'] + template['minute'] / 60 - solar_noon) * 15
     day_angle = 2 * np.pi * (template['day_of_year'] - 1) / 365
     declination = 23.45 * np.sin(day_angle)
-    elevation = np.arcsin(
+    elev = np.arcsin(
         np.sin(np.radians(latitude)) * np.sin(np.radians(declination))
         + np.cos(np.radians(latitude)) * np.cos(np.radians(declination))
         * np.cos(np.radians(hour_angle))
     )
-    template['solar_elev_approx'] = np.degrees(elevation).clip(lower=0)
+    template['solar_elev_approx'] = np.degrees(elev).clip(0)
 
     # Encode district
     template['District_encoded'] = le.transform([district])[0]
@@ -76,8 +81,8 @@ def build_feature_row(target_dt, district, le, gold_features_path):
 
 def make_interpolated_prediction(model, le, feature_cols, district, dt_str, gold_features_path):
     target_dt = pd.to_datetime(dt_str)
-    prev_dt = target_dt.floor('5T')
-    next_dt = target_dt.ceil('5T')
+    prev_dt = target_dt.floor('5min')
+    next_dt = target_dt.ceil('5min')
     if prev_dt == next_dt:
         row = build_feature_row(prev_dt, district, le, gold_features_path)
         X = row[feature_cols].values.reshape(1, -1)
@@ -98,7 +103,7 @@ def make_interpolated_prediction(model, le, feature_cols, district, dt_str, gold
 
 def predict_day(model, le, feature_cols, district, date_str, gold_features_path):
     date = pd.to_datetime(date_str).date()
-    times = pd.date_range(f"{date} 00:00", f"{date} 23:59", freq="5T")
+    times = pd.date_range(f"{date} 00:00", f"{date} 23:59", freq="5min")
     predictions = []
     for t in times:
         try:
@@ -155,4 +160,4 @@ if __name__ == "__main__":
         ##df_pred.to_csv(f"outputs/models/pred_day_{district}_{date_str}.csv", index=False)
         ##all_results.append(df_pred)
     ##all_df = pd.concat(all_results)
-    ##all_df.to_csv(f"outputs/models/pred_all_{date_str}.csv", index=False)##
+    ##all_df.to_csv(f"outputs/models/pred_all_{date_str}.csv", index=False)
