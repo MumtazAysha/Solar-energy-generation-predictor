@@ -26,9 +26,13 @@ def evaluate_district_performance(df, model, feature_cols, le):
     results = []
     for district in sorted(df['District'].unique()):
         sub = df[df['District'] == district]
-        X = sub[feature_cols].copy()
-        if 'District_encoded' not in X:
-            X['District_encoded'] = le.transform(sub['District'])
+        # Use exactly the same feature names as during training
+        X = sub[[c for c in feature_cols if c in sub.columns]].copy()
+
+        # Optional: if model was trained without District_encoded, don't add it
+        if 'District_encoded' in X.columns and 'District_encoded' not in feature_cols:
+            X = X.drop(columns=['District_encoded'], errors='ignore')
+
         y_true = sub['target_kw']
         y_pred = model.predict(X)
         mae = mean_absolute_error(y_true, y_pred)
@@ -98,7 +102,7 @@ def evaluate_model():
     # Encode district
     # Encode if missing, but don't add to features if model wasn't trained with it
     if 'District_encoded' not in features_df:
-     features_df['District_encoded'] = le.transform(features_df['District'])
+        features_df['District_encoded'] = le.transform(features_df['District'])
 
 # Only keep exactly the feature names the model was trained with
 # (Training already saved feature_names.txt)
