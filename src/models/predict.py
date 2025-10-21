@@ -20,50 +20,59 @@ def load_artifacts(cfg):
     return model, le, feature_cols
 
 def build_feature_row(target_dt, district, le, gold_features_path):
+    """
+    Construct a feature row even if no matching record exists
+    (also fixes 'single positional indexer out-of-bounds' error).
+    """
     gold_df = read_parquet(gold_features_path)
-    # Find the closest previous 5-min step for lag features
-    prev_dt = target_dt.floor('5T')
-    nearest = gold_df[(gold_df['District'] == district) &
-                      (gold_df['datetime'] == prev_dt)]
-    if nearest.empty:
-        # fallback dummy example using the first row of that district
-        district_ref = gold_df[gold_df['District'] == district]
-        if district_ref.empty:
-            raise ValueError(f"No data available for district {district}")
-        row = district_ref.iloc[0].copy()
-    else:
-        row = nearest.iloc[0].copy()
 
-    row = nearest.iloc[0].copy()
-    # Update time features for the requested timestamp
-    row['datetime'] = pd.Timestamp(target_dt)
-    row['Month'] = target_dt.month
-    row['Day'] = target_dt.day
-    row['hour'] = target_dt.hour
-    row['minute'] = target_dt.minute
-    row['day_of_year'] = target_dt.timetuple().tm_yday
-    row['day_of_week'] = target_dt.weekday()
-    row['is_weekend'] = int(target_dt.weekday() >= 5)
-    row['minute_of_day'] = target_dt.hour * 60 + target_dt.minute
-    # Cyclical features
-    row['hour_sin'] = np.sin(2 * np.pi * row['hour'] / 24)
-    row['hour_cos'] = np.cos(2 * np.pi * row['hour'] / 24)
-    row['doy_sin'] = np.sin(2 * np.pi * row['day_of_year'] / 365)
-    row['doy_cos'] = np.cos(2 * np.pi * row['day_of_year'] / 365)
-    # Solar elevation angle
-    latitude = 7.0
+    # Try to find an exact or closest record from the same district
+    district_df = gold_df[gold_df['District'] == district].copy()
+    if district_df.empty:
+        raise ValueError(f"No data found for district '{district}' in gold features!")
+
+    # Find the row closest in time-of-day
+    district_df['timedelta'] = abs(
+        (district_df['datetime'].dt.hour * 60 + district_df['datetime'].dt.minute)
+        - (target_dt.hour * 60 + target_dt.minute)
+    )
+    template = district_df.iloc[district_df['timedelta'].idxmin()].copy()
+
+    # Update columns based on target datetime
+    template['datetime'] = pd.Timestamp(target_dt)
+    template['Year'] = target_dt.year
+    template['Month'] = target_dt.month
+    template['Day'] = target_dt.day
+    template['hour'] = target_dt.hour
+    template['minute'] = target_dt.minute
+    template['day_of_year'] = target_dt.timetuple().tm_yday
+    template['day_of_week'] = target_dt.weekday()
+    template['is_weekend'] = int(target_dt.weekday() >= 5)
+    template['minute_of_day'] = target_dt.hour * 60 + target_dt.minute
+
+    # Cyclical time encodings
+    template['hour_sin'] = np.sin(2 * np.pi * template['hour'] / 24)
+    template['hour_cos'] = np.cos(2 * np.pi * template['hour'] / 24)
+    template['doy_sin'] = np.sin(2 * np.pi * template['day_of_year'] / 365)
+    template['doy_cos'] = np.cos(2 * np.pi * template['day_of_year'] / 365)
+
+    # Approx solar elevation
+    latitude = 7.0  # Sri Lanka latitude
     solar_noon = 12.0
-    hour_angle = (row['hour'] + row['minute']/60 - solar_noon) * 15
-    day_angle = 2 * np.pi * (row['day_of_year'] - 1) / 365
+    hour_angle = (template['hour'] + template['minute'] / 60 - solar_noon) * 15
+    day_angle = 2 * np.pi * (template['day_of_year'] - 1) / 365
     declination = 23.45 * np.sin(day_angle)
     elevation = np.arcsin(
-        np.sin(np.radians(latitude)) * np.sin(np.radians(declination)) +
-        np.cos(np.radians(latitude)) * np.cos(np.radians(declination)) * np.cos(np.radians(hour_angle))
+        np.sin(np.radians(latitude)) * np.sin(np.radians(declination))
+        + np.cos(np.radians(latitude)) * np.cos(np.radians(declination))
+        * np.cos(np.radians(hour_angle))
     )
-    row['solar_elev_approx'] = np.degrees(elevation).clip(0)
-    # Encode the district
-    row['District_encoded'] = le.transform([district])[0]
-    return row
+    template['solar_elev_approx'] = np.degrees(elevation).clip(lower=0)
+
+    # Encode district
+    template['District_encoded'] = le.transform([district])[0]
+
+    return template
 
 def make_interpolated_prediction(model, le, feature_cols, district, dt_str, gold_features_path):
     target_dt = pd.to_datetime(dt_str)
