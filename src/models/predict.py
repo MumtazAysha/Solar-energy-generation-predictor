@@ -123,43 +123,24 @@ def predict_day(model, le, feature_cols, district, date_str, gold_features_path)
             print(f"Error predicting for {t}: {e}")
     return pd.DataFrame(predictions)
 
-def main():
-    cfg = load_config()
-    model, le, feature_cols = load_artifacts(cfg)
-    gold_features_path = Path(cfg.data_paths['gold']) / "gold_features_all_years.parquet"
-    print("\nWelcome to Solar Predictor!")
-    print("To exit: type q at any prompt.")
-    print("Available districts:", sorted(le.classes_))
-    while True:
-        district = input("\nEnter district: ")
-        if district.lower() in {'q', 'quit', 'exit'}:
-            break
-        if district not in le.classes_:
-            print("District not recognized. Available:", sorted(le.classes_))
-            continue
-        dt_str = input("Enter datetime (YYYY-MM-DD HH:MM): ")
-        if dt_str.lower() in {'q', 'quit', 'exit'}:
-            break
-        try:
-            y_pred, interpolated = make_interpolated_prediction(
-                model, le, feature_cols, district, dt_str, gold_features_path
-            )
-            style = "[INTERPOLATED]" if interpolated else ""
-            print(f"{style} Predicted generation for {district} at {dt_str}: {y_pred:.2f} kW")
-        except Exception as e:
-            print(f"Error: {e}")
+
 # ========================================================
 # Entry script – choose between interactive or full‑day run
 # ========================================================
+# =====================================================
+# Entry point – choose Interactive or Full‑Day Export
+# =====================================================
 if __name__ == "__main__":
-    print("Welcome to Solar Predictor!")
-    print("[1] Individual time-based prediction")
-    print("[2] Full-day export for all districts")
+    import warnings
+    warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
+
+    print("\nWelcome to Solar Predictor!")
+    print("[1] Individual prediction mode")
+    print("[2] Full‑day export for all districts")
     print("[Q] Quit")
 
-    choice = input("\nSelect mode: ").strip().lower()
-
-    if choice in {"q", "quit", "exit"}:
+    mode = input("\nSelect mode: ").strip().lower()
+    if mode in {"q", "quit", "exit"}:
         print("Exiting.")
         raise SystemExit
 
@@ -169,51 +150,46 @@ if __name__ == "__main__":
     model, le, feature_cols = load_artifacts(cfg)
     gold_features_path = Path(cfg.data_paths['gold']) / "gold_features_all_years.parquet"
 
-    # ------------------ Mode 1 Interactive ------------------
-    if choice == "1":
+    # Mode 1 : interactive single predictions
+    if mode == "1":
         while True:
             district = input("\nEnter district (or Q to quit): ").strip()
             if district.lower() in {"q", "quit", "exit"}:
                 break
             if district not in le.classes_:
-                print("District not recognized. Try again.")
+                print("District not recognized.")
                 continue
-
             dt_str = input("Enter datetime (YYYY-MM-DD HH:MM): ").strip()
             if dt_str.lower() in {"q", "quit", "exit"}:
                 break
-
             try:
                 y_pred, interpolated = make_interpolated_prediction(
                     model, le, feature_cols, district, dt_str, gold_features_path
                 )
-                label = "[INTERPOLATED]" if interpolated else ""
-                print(f"{label} Prediction for {district} at {dt_str} → {y_pred:.2f} kW")
+                tag = "[INTERPOLATED]" if interpolated else ""
+                print(f"{tag} {district} @ {dt_str} → {y_pred:.2f} kW")
             except Exception as e:
                 print(f"Error: {e}")
 
-    # ------------------ Mode 2 Daily CSV export ------------------
-    elif choice == "2":
-     date_str = input("Enter date (YYYY-MM-DD): ").strip()
-    districts = le.classes_
-    all_results = []
-
-    print(f"\n🕒 Generating 5‑minute predictions for {date_str} (all districts)...\n")
-
-    for district in districts:
-        try:
+    # Mode 2 : one‑click CSV export
+    elif mode == "2":
+        date_str = input("Enter date (YYYY-MM-DD): ").strip()
+        all_results = []
+        print(f"\nGenerating 5‑minute predictions for {date_str} ...\n")
+        for district in le.classes_:
+            print(f"  → {district:<15}", end="", flush=True)
             df_pred = predict_day(model, le, feature_cols, district, date_str, gold_features_path)
-            df_pred['District'] = district
+            df_pred["District"] = district
             all_results.append(df_pred)
-            print(f" → {district:<15} ✓ {len(df_pred)} records")
-        except Exception as e:
-            print(f" → {district:<15} ✗ {e}")
+            print("✓")
 
-    if all_results:
-        all_df = pd.concat(all_results, ignore_index=True)
-        merged_file = Path(f"outputs/models/pred_all_{date_str}.csv")
-        all_df.to_csv(merged_file, index=False)
-        print(f"\n✅  Combined daily file saved →  {merged_file}")
-        print(f"   Total rows: {len(all_df):,}")
+        if all_results:
+            all_df = pd.concat(all_results, ignore_index=True)
+            merged = Path(f"outputs/models/pred_all_{date_str}.csv")
+            all_df.to_csv(merged, index=False)
+            print(f"\n✅ Combined full‑day CSV saved → {merged}")
+        else:
+            print("⚠ No predictions created (check date).")
+
     else:
-        print("⚠ No predictions generated — check dataset or input date.")
+        print("Invalid choice. Run again.")
