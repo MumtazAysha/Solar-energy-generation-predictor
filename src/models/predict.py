@@ -10,6 +10,9 @@ import joblib
 from datetime import datetime
 from src.common.config import load_config
 from src.common.io_utils import read_parquet
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
+
 
 def load_artifacts(cfg):
     models_path = Path(cfg.output_paths['models'])
