@@ -194,29 +194,26 @@ if __name__ == "__main__":
 
     # ------------------ Mode 2 Daily CSV export ------------------
     elif choice == "2":
-        date_str = input("Enter date (YYYY-MM-DD): ").strip()
-        districts = le.classes_
-        all_results = []
+     date_str = input("Enter date (YYYY-MM-DD): ").strip()
+    districts = le.classes_
+    all_results = []
 
-        print(f"\n🕒 Generating predictions for {date_str} — {len(districts)} districts...\n")
-        for district in districts:
-            try:
-                print(f" → {district:<15}", end="", flush=True)
-                df_pred = predict_day(model, le, feature_cols, district, date_str, gold_features_path)
-                out_file = Path(f"outputs/models/pred_day_{district}_{date_str}.csv")
-                df_pred.to_csv(out_file, index=False)
-                all_results.append(df_pred)
-                print(" ✓")
-            except Exception as e:
-                print(f" ✗  error: {e}")
+    print(f"\n🕒 Generating 5‑minute predictions for {date_str} (all districts)...\n")
 
-        if all_results:
-            all_df = pd.concat(all_results, ignore_index=True)
-            merged_file = Path(f"outputs/models/pred_all_{date_str}.csv")
-            all_df.to_csv(merged_file, index=False)
-            print(f"\n✅ All‑district CSV saved → {merged_file}")
-        else:
-            print("⚠ No predictions produced (check dataset or input date).")
+    for district in districts:
+        try:
+            df_pred = predict_day(model, le, feature_cols, district, date_str, gold_features_path)
+            df_pred['District'] = district
+            all_results.append(df_pred)
+            print(f" → {district:<15} ✓ {len(df_pred)} records")
+        except Exception as e:
+            print(f" → {district:<15} ✗ {e}")
 
+    if all_results:
+        all_df = pd.concat(all_results, ignore_index=True)
+        merged_file = Path(f"outputs/models/pred_all_{date_str}.csv")
+        all_df.to_csv(merged_file, index=False)
+        print(f"\n✅  Combined daily file saved →  {merged_file}")
+        print(f"   Total rows: {len(all_df):,}")
     else:
-        print("Invalid selection. Run again.")
+        print("⚠ No predictions generated — check dataset or input date.")
