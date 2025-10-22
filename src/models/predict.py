@@ -124,9 +124,6 @@ def predict_day(model, le, feature_cols, district, date_str, gold_features_path)
     return pd.DataFrame(predictions)
 
 
-# ========================================================
-# Entry script – choose between interactive or full‑day run
-# ========================================================
 # =====================================================
 # Entry point – choose Interactive or Full‑Day Export
 # =====================================================
@@ -144,13 +141,11 @@ if __name__ == "__main__":
         print("Exiting.")
         raise SystemExit
 
-    from datetime import date
-
     cfg = load_config()
     model, le, feature_cols = load_artifacts(cfg)
     gold_features_path = Path(cfg.data_paths['gold']) / "gold_features_all_years.parquet"
 
-    # Mode 1 : interactive single predictions
+    # -----  MODE 1: Interactive prediction  -----
     if mode == "1":
         while True:
             district = input("\nEnter district (or Q to quit): ").strip()
@@ -171,11 +166,11 @@ if __name__ == "__main__":
             except Exception as e:
                 print(f"Error: {e}")
 
-    # Mode 2 : one‑click CSV export
+    # -----  MODE 2: Full‑day export  -----
     elif mode == "2":
         date_str = input("Enter date (YYYY-MM-DD): ").strip()
         all_results = []
-        print(f"\nGenerating 5‑minute predictions for {date_str} ...\n")
+        print(f"\n🕒 Generating 5‑minute predictions for {date_str}...\n")
         for district in le.classes_:
             print(f"  → {district:<15}", end="", flush=True)
             df_pred = predict_day(model, le, feature_cols, district, date_str, gold_features_path)
@@ -183,13 +178,12 @@ if __name__ == "__main__":
             all_results.append(df_pred)
             print("✓")
 
-        if all_results:
-            all_df = pd.concat(all_results, ignore_index=True)
-            merged = Path(f"outputs/models/pred_all_{date_str}.csv")
-            all_df.to_csv(merged, index=False)
-            print(f"\n✅ Combined full‑day CSV saved → {merged}")
-        else:
-            print("⚠ No predictions created (check date).")
+        all_df = pd.concat(all_results, ignore_index=True)
+        merged_file = Path(f"outputs/models/pred_all_{date_str}.csv")
+        all_df.to_csv(merged_file, index=False)
+        print(f"\n✅ Combined daily CSV saved → {merged_file}")
+        print(f"   Total rows: {len(all_df):,}")
+        raise SystemExit  # <<— this line forces the program to END once CSV is saved
 
     else:
         print("Invalid choice. Run again.")
