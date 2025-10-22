@@ -145,34 +145,75 @@ def main():
             print(f"{style} Predicted generation for {district} at {dt_str}: {y_pred:.2f} kW")
         except Exception as e:
             print(f"Error: {e}")
+# ========================================================
+# Entry script – choose between interactive or full‑day run
+# ========================================================
 if __name__ == "__main__":
-    mode = input("Choose mode: [1] Interactive  [2] Full-day export  [q] Quit : ").strip().lower()
-    if mode in {'q', 'quit', 'exit'}:
-        print("Exiting.")
-    elif mode == '1':
-        main()  # interactive on-demand prediction
-    elif mode == '2':
-        cfg = load_config()
-        model, le, feature_cols = load_artifacts(cfg)
-        gold_features_path = Path(cfg.data_paths['gold']) / "gold_features_all_years.parquet"
+    print("Welcome to Solar Predictor!")
+    print("[1] Individual time-based prediction")
+    print("[2] Full-day export for all districts")
+    print("[Q] Quit")
 
+    choice = input("\nSelect mode: ").strip().lower()
+
+    if choice in {"q", "quit", "exit"}:
+        print("Exiting.")
+        raise SystemExit
+
+    from datetime import date
+
+    cfg = load_config()
+    model, le, feature_cols = load_artifacts(cfg)
+    gold_features_path = Path(cfg.data_paths['gold']) / "gold_features_all_years.parquet"
+
+    # ------------------ Mode 1 Interactive ------------------
+    if choice == "1":
+        while True:
+            district = input("\nEnter district (or Q to quit): ").strip()
+            if district.lower() in {"q", "quit", "exit"}:
+                break
+            if district not in le.classes_:
+                print("District not recognized. Try again.")
+                continue
+
+            dt_str = input("Enter datetime (YYYY-MM-DD HH:MM): ").strip()
+            if dt_str.lower() in {"q", "quit", "exit"}:
+                break
+
+            try:
+                y_pred, interpolated = make_interpolated_prediction(
+                    model, le, feature_cols, district, dt_str, gold_features_path
+                )
+                label = "[INTERPOLATED]" if interpolated else ""
+                print(f"{label} Prediction for {district} at {dt_str} → {y_pred:.2f} kW")
+            except Exception as e:
+                print(f"Error: {e}")
+
+    # ------------------ Mode 2 Daily CSV export ------------------
+    elif choice == "2":
         date_str = input("Enter date (YYYY-MM-DD): ").strip()
         districts = le.classes_
         all_results = []
 
-        print(f"🕒 Generating CSV predictions for {date_str} across {len(districts)} districts...")
+        print(f"\n🕒 Generating predictions for {date_str} — {len(districts)} districts...\n")
         for district in districts:
-            print(f" → {district} ... ", end="", flush=True)
-            df_pred = predict_day(model, le, feature_cols, district, date_str, gold_features_path)
-            out_file = f"outputs/models/pred_day_{district}_{date_str}.csv"
-            df_pred.to_csv(out_file, index=False)
-            all_results.append(df_pred)
-            print("done")
+            try:
+                print(f" → {district:<15}", end="", flush=True)
+                df_pred = predict_day(model, le, feature_cols, district, date_str, gold_features_path)
+                out_file = Path(f"outputs/models/pred_day_{district}_{date_str}.csv")
+                df_pred.to_csv(out_file, index=False)
+                all_results.append(df_pred)
+                print(" ✓")
+            except Exception as e:
+                print(f" ✗  error: {e}")
 
-        all_df = pd.concat(all_results, ignore_index=True)
-        merged = f"outputs/models/pred_all_{date_str}.csv"
-        all_df.to_csv(merged, index=False)
-        print(f"\n✅ All finished! Combined file saved to: {merged}")
+        if all_results:
+            all_df = pd.concat(all_results, ignore_index=True)
+            merged_file = Path(f"outputs/models/pred_all_{date_str}.csv")
+            all_df.to_csv(merged_file, index=False)
+            print(f"\n✅ All‑district CSV saved → {merged_file}")
+        else:
+            print("⚠ No predictions produced (check dataset or input date).")
+
     else:
-        print("Invalid choice.")
-
+        print("Invalid selection. Run again.")
