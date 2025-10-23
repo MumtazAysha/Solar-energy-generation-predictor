@@ -9,10 +9,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.models.predict import build_feature_row
 from src.common.config import load_config
+from src.common.io_utils import read_parquet
 
 st.set_page_config(page_title="Solar Energy Predictor", layout="wide")
 
-# Load model artifacts
+# Load model artifacts (cached)
 @st.cache_resource
 def load_model():
     cfg = load_config()
@@ -26,23 +27,23 @@ def load_model():
 model, le, feature_cols, gold_path = load_model()
 
 st.title("☀️ Solar Energy Generation Dashboard")
-st.write("Generate predictions for any date and time interval.")
+st.write("Generate predictions for any date and time interval — **Fast & Interactive**")
 
 # User inputs
 col1, col2 = st.columns(2)
 with col1:
     date_input = st.date_input("Select date", value=pd.to_datetime("2026-01-23"))
 with col2:
-    time_interval = st.selectbox("Time resolution", ["1 minute", "5 minutes", "15 minutes", "1 hour"])
+    time_interval = st.selectbox("Time resolution", ["5 minutes", "15 minutes", "1 hour"])
 
 districts = sorted(le.classes_)
 selected_districts = st.multiselect("Select districts", districts, default=districts[:3])
 
-if st.button("Generate Predictions"):
+if st.button("⚡ Generate Predictions"):
     with st.spinner("Generating predictions..."):
         
-        # Generate time range based on user selection
-        freq_map = {"1 minute": "1min", "5 minutes": "5min", "15 minutes": "15min", "1 hour": "1h"}
+        # Map user choice to pandas frequency
+        freq_map = {"5 minutes": "5min", "15 minutes": "15min", "1 hour": "1h"}
         freq = freq_map[time_interval]
         
         date_str = date_input.strftime("%Y-%m-%d")
@@ -50,20 +51,21 @@ if st.button("Generate Predictions"):
         
         all_predictions = []
         
+        # Vectorized prediction per district (FAST!)
         for district in selected_districts:
-            district_preds = []
-            
+            # Build feature matrix for all timestamps at once
+            rows = []
             for t in times:
-                # Build features and predict
                 row = build_feature_row(t, district, le, gold_path)
-                X = row[feature_cols].values.reshape(1, -1)
-                pred = model.predict(X)[0]
-                district_preds.append(pred)
+                rows.append(row[feature_cols].values)
+            
+            X = np.vstack(rows)  # Stack into one matrix
+            preds = model.predict(X)  # Single batch prediction call
             
             df_district = pd.DataFrame({
                 "datetime": times,
                 "district": district,
-                "prediction": district_preds
+                "prediction": preds
             })
             all_predictions.append(df_district)
         
@@ -78,8 +80,8 @@ if st.button("Generate Predictions"):
         # Summary stats
         summary = df.groupby("district")["prediction"].agg(["mean","max","min"]).reset_index()
         summary.columns = ["District", "Average (kW)", "Peak (kW)", "Minimum (kW)"]
-        st.subheader("District Summary")
-        st.dataframe(summary.style.format("{:.2f}"))
+        st.subheader("📊 District Summary")
+        st.dataframe(summary.style.format(precision=2))
         
         # Download button
         csv = df.to_csv(index=False).encode("utf-8")
@@ -90,15 +92,4 @@ if st.button("Generate Predictions"):
             mime="text/csv"
         )
         
-        st.success(f"✅ Generated {len(df):,} predictions for {len(selected_districts)} districts")
-
-# Show existing pre-saved files
-st.sidebar.header("Pre-saved Predictions")
-output_dir = Path("outputs/models")
-if output_dir.exists():
-    files = sorted(output_dir.glob("pred_all_*.csv"))
-    if files:
-        for f in files:
-            st.sidebar.write(f"📄 {f.name}")
-    else:
-        st.sidebar.write("No saved files yet")
+        st.success(f"✅ Generated {len(df):,} predictions for {len(selected_districts)} districts in seconds!")
