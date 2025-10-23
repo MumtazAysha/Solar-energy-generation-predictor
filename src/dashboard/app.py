@@ -78,7 +78,7 @@ def build_features_fast(times, district, le, gold_df, feature_cols):
     return np.vstack(rows)
 
 st.title("☀️ Solar Energy Generation Dashboard")
-st.write("Generate predictions for any date with sub-5-minute resolution — **Fast & Interactive**")
+st.write("Generate predictions for any date with time resolution — **Fast & Interactive**")
 
 col1, col2 = st.columns(2)
 with col1:
