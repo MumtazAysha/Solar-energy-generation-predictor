@@ -21,13 +21,13 @@ def load_model_and_data():
     le = joblib.load(models_path / "district_encoder.pkl")
     feature_cols = (models_path / "feature_names.txt").read_text().splitlines()
     gold_path = Path(cfg.data_paths['gold']) / "gold_features_all_years.parquet"
-    gold_df = read_parquet(gold_path)  # Load ONCE
+    gold_df = read_parquet(gold_path)
     return model, le, feature_cols, gold_df
 
 model, le, feature_cols, gold_df = load_model_and_data()
 
 def build_features_fast(times, district, le, gold_df, feature_cols):
-    """Fast vectorized feature building without reloading parquet."""
+    """Fast vectorized feature building."""
     district_data = gold_df[gold_df['District'] == district].copy()
     if district_data.empty:
         district_data = gold_df.copy()
@@ -78,13 +78,16 @@ def build_features_fast(times, district, le, gold_df, feature_cols):
     return np.vstack(rows)
 
 st.title("☀️ Solar Energy Generation Dashboard")
-st.write("Generate predictions for any date — **Fast & Interactive**")
+st.write("Generate predictions for any date with sub-5-minute resolution — **Fast & Interactive**")
 
 col1, col2 = st.columns(2)
 with col1:
     date_input = st.date_input("Select date", value=pd.to_datetime("2026-01-23"))
 with col2:
-    time_interval = st.selectbox("Time resolution", ["5 minutes", "15 minutes", "1 hour"])
+    time_interval = st.selectbox(
+        "Time resolution", 
+        ["1 minute", "5 minutes", "15 minutes", "1 hour"]
+    )
 
 districts = sorted(le.classes_)
 selected_districts = st.multiselect("Select districts", districts, default=districts[:3])
@@ -92,14 +95,20 @@ selected_districts = st.multiselect("Select districts", districts, default=distr
 if st.button("⚡ Generate Predictions"):
     with st.spinner("Generating predictions..."):
         
-        freq_map = {"5 minutes": "5min", "15 minutes": "15min", "1 hour": "1h"}
+        freq_map = {
+            "1 minute": "1min",
+            "5 minutes": "5min",
+            "15 minutes": "15min",
+            "1 hour": "1h"
+        }
         freq = freq_map[time_interval]
         date_str = date_input.strftime("%Y-%m-%d")
         times = pd.date_range(f"{date_str} 00:00", f"{date_str} 23:59", freq=freq)
         
         all_predictions = []
+        progress = st.progress(0)
         
-        for district in selected_districts:
+        for idx, district in enumerate(selected_districts):
             X = build_features_fast(times, district, le, gold_df, feature_cols)
             preds = model.predict(X)
             
@@ -109,11 +118,12 @@ if st.button("⚡ Generate Predictions"):
                 "prediction": preds
             })
             all_predictions.append(df_district)
+            progress.progress((idx + 1) / len(selected_districts))
         
         df = pd.concat(all_predictions, ignore_index=True)
         
         fig = px.line(df, x="datetime", y="prediction", color="district",
-                      title=f"Predicted Solar Generation – {date_str}",
+                      title=f"Predicted Solar Generation – {date_str} ({time_interval} resolution)",
                       labels={"prediction":"Predicted kW"})
         st.plotly_chart(fig, use_container_width=True)
         
@@ -123,6 +133,13 @@ if st.button("⚡ Generate Predictions"):
         st.dataframe(summary.style.format(precision=2))
         
         csv = df.to_csv(index=False).encode("utf-8")
-        st.download_button("📥 Download CSV", csv, f"predictions_{date_str}.csv", "text/csv")
+        st.download_button(
+            "📥 Download Predictions as CSV", 
+            csv, 
+            f"predictions_{date_str}_{time_interval.replace(' ', '_')}.csv", 
+            "text/csv"
+        )
         
-        st.success(f"✅ Generated {len(df):,} predictions in seconds!")
+        st.success(f"✅ Generated {len(df):,} predictions for {len(selected_districts)} districts!")
+        st.info(f"📊 Time resolution: **{time_interval}** ({len(times)} intervals per district)")
+
