@@ -112,6 +112,28 @@ if st.button("⚡ Generate Predictions"):
             X = build_features_fast(times, district, le, gold_df, feature_cols)
             preds = model.predict(X)
             
+            # ✅ POST-PROCESS: Zero out nighttime predictions
+            for i, t in enumerate(times):
+                hour = t.hour + t.minute / 60
+                day_angle = 2 * np.pi * (t.timetuple().tm_yday - 1) / 365
+                declination = 23.45 * np.sin(day_angle)
+                latitude = 7.0  # Sri Lanka
+                solar_noon = 12.0
+                hour_angle = (hour - solar_noon) * 15
+                
+                elevation = np.arcsin(
+                    np.sin(np.radians(latitude)) * np.sin(np.radians(declination))
+                    + np.cos(np.radians(latitude)) * np.cos(np.radians(declination))
+                    * np.cos(np.radians(hour_angle))
+                )
+                solar_elev = np.degrees(elevation)
+                
+                # If sun is below horizon or very low, force generation to zero
+                if solar_elev <= 0:
+                    preds[i] = 0.0
+                elif solar_elev < 5:  # Twilight zone, minimal generation
+                    preds[i] = max(0, preds[i] * (solar_elev / 5))
+            
             df_district = pd.DataFrame({
                 "datetime": times,
                 "district": district,
@@ -140,6 +162,7 @@ if st.button("⚡ Generate Predictions"):
             "text/csv"
         )
         
-        st.success(f"✅ Generated {len(df):,} predictions for {len(selected_districts)} districts!")
+        st.success(f"✅ Generated {len(df):,} predictions with nighttime correction!")
         st.info(f"📊 Time resolution: **{time_interval}** ({len(times)} intervals per district)")
+
 
