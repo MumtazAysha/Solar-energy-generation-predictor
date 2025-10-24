@@ -157,17 +157,27 @@ def select_feature_columns(df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
 
 def drop_na_after_features(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Drop rows with NA in key engineered features to ensure train readiness.
+    Drop rows with NA in key engineered features, BUT keep January 1st rows.
     """
     before = len(df)
-    # Drop rows where any lag/rolling feature is NA
-    engineered_cols = [c for c in df.columns if c.startswith('generation_kw_lag') or c.startswith('gen_roll_') or c.startswith('gen_ema_')]
-    drop_cols = engineered_cols  # lags/rollings define usable training window
-    df = df.dropna(subset=drop_cols)
+    
+    # Identify January 1st rows to preserve
+    jan1_mask = (df['datetime'].dt.month == 1) & (df['datetime'].dt.day == 1)
+    
+    # Get engineered feature columns
+    engineered_cols = [c for c in df.columns if c.startswith('generation_kw_lag') or 
+                       c.startswith('gen_roll_') or c.startswith('gen_ema_')]
+    
+    # Drop NA only for non-January-1st rows
+    df_jan1 = df[jan1_mask].copy()
+    df_other = df[~jan1_mask].dropna(subset=engineered_cols)
+    
+    # Recombine
+    df = pd.concat([df_jan1, df_other], ignore_index=True).sort_values(['District', 'datetime'])
+    
     after = len(df)
-    logger.info(f"Dropped {before - after:,} rows with NA in engineered features; remaining: {after:,}")
+    logger.info(f"Dropped {before - after:,} rows with NA (preserved January 1st); remaining: {after:,}")
     return df
-
 
 def build_features():
     """
