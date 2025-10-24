@@ -17,79 +17,93 @@ logger = logging.getLogger(__name__)
 
 def add_lag_features(df: pd.DataFrame, lags: List[int]) -> pd.DataFrame:
     """
-    Add lag features with intelligent January 1st handling:
-    - For 2019+ Jan 1: use previous year's Jan 1 data
-    - For 2018 Jan 1: estimate from Jan 2-7 average
+    Add lag features with intelligent January 1st handling (optimized).
     """
     logger.info(f"Adding lag features with year carryover: {lags}")
-    df = df.sort_values(['District', 'datetime']).copy()
+    df = df.sort_values(['District', 'datetime']).reset_index(drop=True)
     
     # Standard lag creation
     for lag in lags:
         col = f'generation_kw_lag{lag}'
         df[col] = df.groupby('District', group_keys=False)['generation_kw'].shift(lag)
     
-    # Previous-day same-time lag (109 intervals)
+    # Previous-day same-time lag
     prev_day_lag = 109
     if prev_day_lag not in lags:
         col = f'generation_kw_lag{prev_day_lag}'
         logger.info(f"Adding previous-day same-time lag: {prev_day_lag}")
         df[col] = df.groupby('District', group_keys=False)['generation_kw'].shift(prev_day_lag)
     
-    # ✅ Handle January 1st intelligently
-    logger.info("Applying year carryover for January 1st dates...")
+    # ✅ FAST year carryover for January 1st
+    logger.info("Applying fast year carryover for January 1st dates...")
+    
+    # Create helper columns for matching
+    df['date_only'] = df['datetime'].dt.date
+    df['time_only'] = df['datetime'].dt.time
+    df['year'] = df['datetime'].dt.year
+    df['is_jan1'] = (df['datetime'].dt.month == 1) & (df['datetime'].dt.day == 1)
+    
     jan1_count = 0
     
     for district in df['District'].unique():
         district_mask = df['District'] == district
-        district_df = df[district_mask].copy()
+        district_df = df[district_mask]
         
-        jan1_mask = (district_df['datetime'].dt.month == 1) & (district_df['datetime'].dt.day == 1)
-        jan1_indices = district_df[jan1_mask].index
+        # Get all Jan 1 rows for this district
+        jan1_rows = district_df[district_df['is_jan1']]
         
-        for idx in jan1_indices:
-            current_dt = df.loc[idx, 'datetime']
-            year = current_dt.year
+        if len(jan1_rows) == 0:
+            continue
+        
+        for idx in jan1_rows.index:
+            year = df.loc[idx, 'year']
+            time_val = df.loc[idx, 'time_only']
             
-            if year > 2018:  # Use previous year's Jan 1
-                prev_year_dt = current_dt.replace(year=year - 1)
-                prev_year_match = df[(df['District'] == district) & (df['datetime'] == prev_year_dt)]
-                
-                if len(prev_year_match) > 0:
-                    prev_value = prev_year_match.iloc[0]['generation_kw']
-                    df.loc[idx, 'generation_kw_lag109'] = prev_value
-                    
-                    # Estimate short-term lags from previous year
-                    for lag, lag_col in [(1, 'generation_kw_lag1'), (12, 'generation_kw_lag12'),
-                                          (24, 'generation_kw_lag24'), (36, 'generation_kw_lag36')]:
-                        if lag_col in df.columns:
-                            lag_dt = prev_year_dt - pd.Timedelta(minutes=5*lag)
-                            lag_match = df[(df['District'] == district) & (df['datetime'] == lag_dt)]
-                            if len(lag_match) > 0:
-                                df.loc[idx, lag_col] = lag_match.iloc[0]['generation_kw']
-                    jan1_count += 1
-            
-            else:  # 2018: use early January average
-                same_hour = df[
-                    (df['District'] == district) &
-                    (df['datetime'].dt.year == year) &
-                    (df['datetime'].dt.month == 1) &
-                    (df['datetime'].dt.day.between(2, 7)) &
-                    (df['datetime'].dt.hour == current_dt.hour) &
-                    (df['datetime'].dt.minute == current_dt.minute)
+            if year > 2018:
+                # Find matching time from previous year's Jan 1
+                prev_year_match = district_df[
+                    (district_df['year'] == year - 1) &
+                    (district_df['datetime'].dt.month == 1) &
+                    (district_df['datetime'].dt.day == 1) &
+                    (district_df['time_only'] == time_val)
                 ]
                 
-                if len(same_hour) > 0:
-                    avg_val = same_hour['generation_kw'].mean()
-                    for lag_col in ['generation_kw_lag1', 'generation_kw_lag12', 
-                                    'generation_kw_lag24', 'generation_kw_lag36', 'generation_kw_lag109']:
-                        if lag_col in df.columns:
-                            df.loc[idx, lag_col] = avg_val
-                jan1_count += 1
+                if len(prev_year_match) > 0:
+                    prev_gen = prev_year_match.iloc[0]['generation_kw']
+                    df.loc[idx, 'generation_kw_lag109'] = prev_gen
+                    
+                    # Estimate short lags
+                    df.loc[idx, 'generation_kw_lag1'] = prev_gen * 0.98
+                    df.loc[idx, 'generation_kw_lag12'] = prev_gen * 0.95
+                    df.loc[idx, 'generation_kw_lag24'] = prev_gen * 0.90
+                    if 36 in lags:
+                        df.loc[idx, 'generation_kw_lag36'] = prev_gen * 0.85
+                    jan1_count += 1
+            
+            else:  # 2018: use Jan 2-7 average
+                same_time_early_jan = district_df[
+                    (district_df['year'] == year) &
+                    (district_df['datetime'].dt.month == 1) &
+                    (district_df['datetime'].dt.day.between(2, 7)) &
+                    (district_df['time_only'] == time_val)
+                ]
+                
+                if len(same_time_early_jan) > 0:
+                    avg_val = same_time_early_jan['generation_kw'].mean()
+                    df.loc[idx, 'generation_kw_lag1'] = avg_val
+                    df.loc[idx, 'generation_kw_lag12'] = avg_val
+                    df.loc[idx, 'generation_kw_lag24'] = avg_val
+                    if 36 in lags:
+                        df.loc[idx, 'generation_kw_lag36'] = avg_val
+                    df.loc[idx, 'generation_kw_lag109'] = avg_val
+                    jan1_count += 1
+    
+    # Clean up helper columns
+    df = df.drop(columns=['date_only', 'time_only', 'year', 'is_jan1'])
     
     logger.info(f"Applied year carryover to {jan1_count} January 1st records")
     
-    # Fill remaining NaN with 0 (only for edge cases)
+    # Fill remaining NaN with 0
     lag_cols = [c for c in df.columns if c.startswith('generation_kw_lag')]
     for col in lag_cols:
         df[col] = df[col].fillna(0)
