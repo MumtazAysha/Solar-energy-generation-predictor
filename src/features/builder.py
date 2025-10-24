@@ -17,25 +17,84 @@ logger = logging.getLogger(__name__)
 
 def add_lag_features(df: pd.DataFrame, lags: List[int]) -> pd.DataFrame:
     """
-    Add lag features for generation_kw per District.
-    lags are in units of rows (5-minute steps).
+    Add lag features with intelligent January 1st handling:
+    - For 2019+ Jan 1: use previous year's Jan 1 data
+    - For 2018 Jan 1: estimate from Jan 2-7 average
     """
-    logger.info(f"Adding lag features: {lags}")
+    logger.info(f"Adding lag features with year carryover: {lags}")
     df = df.sort_values(['District', 'datetime']).copy()
-
+    
+    # Standard lag creation
     for lag in lags:
         col = f'generation_kw_lag{lag}'
         df[col] = df.groupby('District', group_keys=False)['generation_kw'].shift(lag)
-
-    # Previous-day same-time lag (109 intervals: 8:00–17:00 inclusive at 5-min steps)
+    
+    # Previous-day same-time lag (109 intervals)
     prev_day_lag = 109
     if prev_day_lag not in lags:
         col = f'generation_kw_lag{prev_day_lag}'
         logger.info(f"Adding previous-day same-time lag: {prev_day_lag}")
         df[col] = df.groupby('District', group_keys=False)['generation_kw'].shift(prev_day_lag)
-
+    
+    # ✅ Handle January 1st intelligently
+    logger.info("Applying year carryover for January 1st dates...")
+    jan1_count = 0
+    
+    for district in df['District'].unique():
+        district_mask = df['District'] == district
+        district_df = df[district_mask].copy()
+        
+        jan1_mask = (district_df['datetime'].dt.month == 1) & (district_df['datetime'].dt.day == 1)
+        jan1_indices = district_df[jan1_mask].index
+        
+        for idx in jan1_indices:
+            current_dt = df.loc[idx, 'datetime']
+            year = current_dt.year
+            
+            if year > 2018:  # Use previous year's Jan 1
+                prev_year_dt = current_dt.replace(year=year - 1)
+                prev_year_match = df[(df['District'] == district) & (df['datetime'] == prev_year_dt)]
+                
+                if len(prev_year_match) > 0:
+                    prev_value = prev_year_match.iloc[0]['generation_kw']
+                    df.loc[idx, 'generation_kw_lag109'] = prev_value
+                    
+                    # Estimate short-term lags from previous year
+                    for lag, lag_col in [(1, 'generation_kw_lag1'), (12, 'generation_kw_lag12'),
+                                          (24, 'generation_kw_lag24'), (36, 'generation_kw_lag36')]:
+                        if lag_col in df.columns:
+                            lag_dt = prev_year_dt - pd.Timedelta(minutes=5*lag)
+                            lag_match = df[(df['District'] == district) & (df['datetime'] == lag_dt)]
+                            if len(lag_match) > 0:
+                                df.loc[idx, lag_col] = lag_match.iloc[0]['generation_kw']
+                    jan1_count += 1
+            
+            else:  # 2018: use early January average
+                same_hour = df[
+                    (df['District'] == district) &
+                    (df['datetime'].dt.year == year) &
+                    (df['datetime'].dt.month == 1) &
+                    (df['datetime'].dt.day.between(2, 7)) &
+                    (df['datetime'].dt.hour == current_dt.hour) &
+                    (df['datetime'].dt.minute == current_dt.minute)
+                ]
+                
+                if len(same_hour) > 0:
+                    avg_val = same_hour['generation_kw'].mean()
+                    for lag_col in ['generation_kw_lag1', 'generation_kw_lag12', 
+                                    'generation_kw_lag24', 'generation_kw_lag36', 'generation_kw_lag109']:
+                        if lag_col in df.columns:
+                            df.loc[idx, lag_col] = avg_val
+                jan1_count += 1
+    
+    logger.info(f"Applied year carryover to {jan1_count} January 1st records")
+    
+    # Fill remaining NaN with 0 (only for edge cases)
+    lag_cols = [c for c in df.columns if c.startswith('generation_kw_lag')]
+    for col in lag_cols:
+        df[col] = df[col].fillna(0)
+    
     return df
-
 
 def add_rolling_features(df: pd.DataFrame, windows: List[int]) -> pd.DataFrame:
     """
