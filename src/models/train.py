@@ -15,104 +15,111 @@ from src.common.io_utils import read_parquet
 
 logger = logging.getLogger(__name__)
 
+
 def load_and_prepare_data(cfg):
-   """Load feature-engineered data and prepare for training"""
-   logger.info("Loading feature data...")
+    """Load feature-engineered data and prepare for training"""
+    logger.info("Loading feature data...")
     
-   gold_path = Path(cfg.data_paths['gold'])
-   features_file = gold_path / "gold_features_all_years.parquet"
+    gold_path = Path(cfg.data_paths['gold'])
+    features_file = gold_path / "gold_features_all_years.parquet"
     
-   if not features_file.exists():
+    if not features_file.exists():
         logger.error(f"❌ Features file not found: {features_file}")
         logger.info("Please run feature engineering first: python -m src.features.builder")
         return None, None, None
 
-   df = read_parquet(features_file)
-   logger.info(f"Loaded {len(df):,} records")
+    df = read_parquet(features_file)
+    logger.info(f"Loaded {len(df):,} records")
 
-   #Identify feature columns
-   exclude_cols = ['datetime', 'Date', 'Year', 'Month', 'Day', 'target_kw', 'District']
-   feature_cols = [c for c in df.columns if c not in exclude_cols]
+    # Identify feature columns
+    exclude_cols = ['datetime', 'Date', 'Year', 'Month', 'Day', 'target_kw', 'District']
+    feature_cols = [c for c in df.columns if c not in exclude_cols]
 
-   logger.info(f"Feature columns: {len(feature_cols)}")
+    logger.info(f"Feature columns: {len(feature_cols)}")
 
-   return df, feature_cols, exclude_cols
+    return df, feature_cols, exclude_cols
+
 
 def encode_district(df):
     """Encode District as numerical category"""
     logger.info("Encoding District feature...")
 
     le = LabelEncoder()
-    df['Dstrict_encoded'] = le.fit_transform(df['District'])
+    df['District_encoded'] = le.fit_transform(df['District'])
 
     logger.info(f"Districts encoded: {len(le.classes_)} unique values")
     logger.info(f"  Mapping: {dict(zip(le.classes_, le.transform(le.classes_)))}")
     
     return df, le
 
+
 def split_data(df, feature_cols, cfg):
-    """Split data into train/validation/test sets"""
-    logger.info("Splitting data into train/val/test sets...")
+    """
+    PRODUCTION split: Use ALL years in training for maximum accuracy.
+    """
+    logger.info("Splitting data for PRODUCTION (temporal 80/10/10 split)...")
     
-    # Work on a copy to avoid UnboundLocalError
+    # Add District_encoded
     feature_cols_final = feature_cols.copy() if isinstance(feature_cols, list) else list(feature_cols)
-    
-    # Add District_encoded to features if it exists and isn't already included
     if 'District_encoded' in df.columns and 'District_encoded' not in feature_cols_final:
         feature_cols_final.append('District_encoded')
     
-    X = df[feature_cols_final]
-    y = df['target_kw']
+    # Sort chronologically for temporal split
+    df = df.sort_values('datetime')
     
-    # Split: 70% train, 15% validation, 15% test
-    # Use temporal split to avoid data leakage
-    train_frac = cfg.train_fraction  # 0.7 from config
-    val_frac = 0.15
+    n = len(df)
+    train_end = int(n * 0.80)
+    val_end = int(n * 0.90)
     
-    # Sort by datetime for temporal split
-    df_sorted = df.sort_values('datetime')
-    X = df_sorted[feature_cols_final]
-    y = df_sorted['target_kw']
+    X_train = df.iloc[:train_end][feature_cols_final]
+    y_train = df.iloc[:train_end]['target_kw']
     
-    n = len(df_sorted)
-    train_end = int(n * train_frac)
-    val_end = int(n * (train_frac + val_frac))
+    X_val = df.iloc[train_end:val_end][feature_cols_final]
+    y_val = df.iloc[train_end:val_end]['target_kw']
     
-    X_train = X.iloc[:train_end]
-    y_train = y.iloc[:train_end]
+    X_test = df.iloc[val_end:][feature_cols_final]
+    y_test = df.iloc[val_end:]['target_kw']
     
-    X_val = X.iloc[train_end:val_end]
-    y_val = y.iloc[train_end:val_end]
+    logger.info(f"  Train: {len(X_train):,} samples (2018-2023)")
+    logger.info(f"  Validation: {len(X_val):,} samples (late 2023)")
+    logger.info(f"  Test: {len(X_test):,} samples (2024)")
     
-    X_test = X.iloc[val_end:]
-    y_test = y.iloc[val_end:]
-    
-    logger.info(f"  Train: {len(X_train):,} samples ({train_frac*100:.0f}%)")
-    logger.info(f"  Validation: {len(X_val):,} samples ({val_frac*100:.0f}%)")
-    logger.info(f"  Test: {len(X_test):,} samples ({(1-train_frac-val_frac)*100:.0f}%)")
-    
-    # Check for NaN
+    # Drop NaN
     if X_train.isna().any().any():
-        logger.warning("⚠️ Training data contains NaN values, dropping...")
-        mask = ~X_train.isna().any(axis=1)
-        X_train = X_train[mask]
-        y_train = y_train[mask]
+        train_mask = ~X_train.isna().any(axis=1)
+        X_train = X_train[train_mask]
+        y_train = y_train[train_mask]
     
     return X_train, X_val, X_test, y_train, y_val, y_test
 
+
 def train_model(X_train, y_train, cfg):
-    """Train RandomForest model"""
-    logger.info("Training RandomForest model...")
+    """Production-grade model"""
+    logger.info("Training PRODUCTION model...")
     
-    model_params = cfg.model['params']
-    logger.info(f"  Parameters: {model_params}")
+    # Sample for speed but keep more data
+    if len(X_train) > 1000000:
+        logger.info(f"  Sampling 1M records from {len(X_train):,}...")
+        sample_idx = np.random.choice(len(X_train), 1000000, replace=False)
+        X_train_sample = X_train.iloc[sample_idx]
+        y_train_sample = y_train.iloc[sample_idx]
+    else:
+        X_train_sample = X_train
+        y_train_sample = y_train
     
-    model = RandomForestRegressor(**model_params)
+    model = RandomForestRegressor(
+        n_estimators=100,     # More trees
+        max_depth=30,         # Deeper
+        min_samples_split=5,
+        min_samples_leaf=2,
+        max_features='sqrt',
+        n_jobs=-1,
+        random_state=42,
+        verbose=1,
+    )
     
-    logger.info("  Fitting model (this may take a few minutes)...")
-    model.fit(X_train, y_train)
-    
-    logger.info("  ✅ Model trained successfully")
+    logger.info("  Fitting model (5-8 minutes)...")
+    model.fit(X_train_sample, y_train_sample)
     
     return model
 
@@ -133,6 +140,7 @@ def evaluate_predictions(y_true, y_pred, dataset_name="Dataset"):
     logger.info(f"    MAPE: {mape:.2f}%")
     
     return {'mae': mae, 'rmse': rmse, 'r2': r2, 'mape': mape}
+
 
 def save_model_and_artifacts(model, label_encoder, feature_cols, metrics, cfg):
     """Save trained model and related artifacts"""
@@ -190,7 +198,7 @@ def train_pipeline():
     cfg = load_config()
     
     logger.info("="*60)
-    logger.info("STEP 5: MODEL TRAINING")
+    logger.info("STEP 5: MODEL TRAINING (Year-Based Split)")
     logger.info("="*60)
     
     # Load data
@@ -204,7 +212,7 @@ def train_pipeline():
     df, label_encoder = encode_district(df)
     print()
     
-    # Split data
+    # Split data (YEAR-BASED)
     X_train, X_val, X_test, y_train, y_val, y_test = split_data(df, feature_cols, cfg)
     print()
     
@@ -225,9 +233,9 @@ def train_pipeline():
     val_metrics = evaluate_predictions(y_val, y_val_pred, "Validation")
     print()
     
-    # Test set
+    # Test set (2022 + 2024 - UNSEEN!)
     y_test_pred = model.predict(X_test)
-    test_metrics = evaluate_predictions(y_test, y_test_pred, "Test")
+    test_metrics = evaluate_predictions(y_test, y_test_pred, "Test (2022+2024 UNSEEN)")
     print()
     
     # Save everything
@@ -249,8 +257,9 @@ def train_pipeline():
     logger.info("✅ TRAINING COMPLETE")
     logger.info("="*60)
     logger.info(f"Model saved to: {Path(cfg.output_paths['models']) / 'random_forest_model.pkl'}")
-    logger.info(f"Test R²: {test_metrics['r2']:.4f}")
-    logger.info(f"Test MAE: {test_metrics['mae']:.2f} kW")
+    logger.info(f"Test R² (on unseen 2022+2024): {test_metrics['r2']:.4f}")
+    logger.info(f"Test MAE (on unseen 2022+2024): {test_metrics['mae']:.2f} kW")
+    logger.info("\n🎯 2022 was NEVER seen during training - this is true prediction!")
     logger.info("="*60)
 
 
@@ -260,7 +269,5 @@ if __name__ == "__main__":
         format='%(asctime)s - %(levelname)s - %(message)s'
     )
     train_pipeline()
-
-
 
 

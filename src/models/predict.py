@@ -28,63 +28,67 @@ def load_artifacts(cfg):
 
 def build_feature_row(target_dt, district, le, gold_features_path):
     """
-    Robust feature generator for any future or unseen datetime.
-    Always finds the nearest time-of-day sample for the district
-    without causing indexer or matching errors.
+    Load actual features for the exact datetime from gold dataset.
     """
     gold_df = read_parquet(gold_features_path)
-
+    
     # Filter by district
     district_df = gold_df[gold_df['District'] == district].copy()
     if district_df.empty:
-        print(f"⚠ District '{district}' not found in gold dataset. Using first available district.")
-        district_df = gold_df.copy()
-
-    # Compute minutes-of-day difference, fall back safely
-    target_min = target_dt.hour * 60 + target_dt.minute
-    district_df['minutes_day'] = (
-        district_df['datetime'].dt.hour * 60 + district_df['datetime'].dt.minute
-    )
-    idx = (district_df['minutes_day'] - target_min).abs().idxmin()
-    if np.isnan(idx):
-        idx = 0
-    template = district_df.loc[idx].copy()
-
-    # Update time-based features for requested timestamp
-    template['datetime'] = pd.Timestamp(target_dt)
-    template['Year'] = target_dt.year
-    template['Month'] = target_dt.month
-    template['Day'] = target_dt.day
-    template['hour'] = target_dt.hour
-    template['minute'] = target_dt.minute
-    template['day_of_year'] = target_dt.timetuple().tm_yday
-    template['day_of_week'] = target_dt.weekday()
-    template['is_weekend'] = int(target_dt.weekday() >= 5)
-    template['minute_of_day'] = target_min
-
-    # Cyclic encodings
-    template['hour_sin'] = np.sin(2 * np.pi * template['hour'] / 24)
-    template['hour_cos'] = np.cos(2 * np.pi * template['hour'] / 24)
-    template['doy_sin'] = np.sin(2 * np.pi * template['day_of_year'] / 365)
-    template['doy_cos'] = np.cos(2 * np.pi * template['day_of_year'] / 365)
-
-    # Solar elevation approximation
-    latitude = 7.0
-    solar_noon = 12.0
-    hour_angle = (template['hour'] + template['minute'] / 60 - solar_noon) * 15
-    day_angle = 2 * np.pi * (template['day_of_year'] - 1) / 365
-    declination = 23.45 * np.sin(day_angle)
-    elev = np.arcsin(
-        np.sin(np.radians(latitude)) * np.sin(np.radians(declination))
-        + np.cos(np.radians(latitude)) * np.cos(np.radians(declination))
-        * np.cos(np.radians(hour_angle))
-    )
-    template['solar_elev_approx'] = np.degrees(elev).clip(0)
-
-    # Encode district
+        raise ValueError(f"District '{district}' not found in dataset")
+    
+    # Try exact datetime match first
+    exact_match = district_df[district_df['datetime'] == target_dt]
+    
+    if not exact_match.empty:
+        # Perfect match - use actual features from data!
+        template = exact_match.iloc[0].copy()
+    else:
+        # Fallback: Find same time-of-day from nearest date
+        target_time = target_dt.time()
+        target_date = pd.Timestamp(target_dt).date()
+        
+        # Filter to same time of day
+        district_df['time_only'] = district_df['datetime'].dt.time
+        same_time = district_df[district_df['time_only'] == target_time].copy()
+        
+        if same_time.empty:
+            # No exact time match - find nearest minute
+            target_min = target_dt.hour * 60 + target_dt.minute
+            district_df['minutes_day'] = (
+                district_df['datetime'].dt.hour * 60 + 
+                district_df['datetime'].dt.minute
+            )
+            idx = (district_df['minutes_day'] - target_min).abs().idxmin()
+            template = district_df.loc[idx].copy()
+        else:
+            # Find same time from nearest date
+            same_time['date_only'] = same_time['datetime'].dt.date
+            same_time['date_diff'] = abs((same_time['date_only'] - target_date).apply(lambda x: x.days))
+            idx = same_time['date_diff'].idxmin()
+            template = same_time.loc[idx].copy()
+        
+        # Update only the date/time metadata (keep all lag features!)
+        template['datetime'] = pd.Timestamp(target_dt)
+        template['Year'] = target_dt.year
+        template['Month'] = target_dt.month
+        template['Day'] = target_dt.day
+        template['day_of_year'] = target_dt.timetuple().tm_yday
+        template['day_of_week'] = target_dt.weekday()
+        template['is_weekend'] = int(target_dt.weekday() >= 5)
+        
+        # Update cyclic features
+        template['hour_sin'] = np.sin(2 * np.pi * template['hour'] / 24)
+        template['hour_cos'] = np.cos(2 * np.pi * template['hour'] / 24)
+        template['doy_sin'] = np.sin(2 * np.pi * template['day_of_year'] / 365)
+        template['doy_cos'] = np.cos(2 * np.pi * template['day_of_year'] / 365)
+    
+    # Add District_encoded (required by model)
     template['District_encoded'] = le.transform([district])[0]
-
+    
     return template
+
+
 
 def make_interpolated_prediction(model, le, feature_cols, district, dt_str, gold_features_path):
     target_dt = pd.to_datetime(dt_str)

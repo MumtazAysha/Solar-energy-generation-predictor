@@ -16,27 +16,10 @@ logger = logging.getLogger(__name__)
 
 
 def extract_district_from_filename(filename):
-    """
-    Extract district name from various filename patterns.
-    
-    Handles patterns like:
-    - "Annual Generation data in Ampara 2022.xlsx"
-    - "Colombo-2022.xlsx"
-    - "Generation Colombo 2022.xlsx"
-    
-    Args:
-        filename (str): Excel filename
-        
-    Returns:
-        str: District name
-    """
-    # Remove file extension
+    """Extract district name from various filename patterns."""
     name = filename.replace('.xlsx', '').replace('.xls', '')
-    
-    # Split by common delimiters
     parts = name.replace('-', ' ').replace('_', ' ').split()
     
-    # Known district names in Sri Lanka
     districts = [
         'Ampara', 'Anuradhapura', 'Badulla', 'Batticaloa', 'Colombo',
         'Galle', 'Gampaha', 'Hambantota', 'Jaffna', 'Kalutara',
@@ -46,17 +29,13 @@ def extract_district_from_filename(filename):
         'Trincomalee', 'Vavuniya'
     ]
     
-    # Find first matching district name in the filename
     for part in parts:
-        # Check exact match (case-insensitive)
         for district in districts:
             if part.lower() == district.lower():
                 return district
-            # Handle "NuwaraEliya" vs "Nuwara Eliya"
             if district.replace(' ', '').lower() == part.lower():
                 return district.replace(' ', '')
     
-    # If "in" keyword exists, take the word after it
     if 'in' in parts:
         in_index = parts.index('in')
         if in_index + 1 < len(parts):
@@ -66,19 +45,9 @@ def extract_district_from_filename(filename):
 
 
 def parse_time_column(col_name):
-    """
-    Parse time column name to extract hour and minute.
-    Handles formats: 8, 8.05, 08:00, 08:05, etc.
-    
-    Args:
-        col_name: Column name
-        
-    Returns:
-        tuple: (hour, minute) or None if not a time column
-    """
+    """Parse time column name to extract hour and minute."""
     col_str = str(col_name).strip()
     
-    # Format 1: HH:MM (e.g., "08:00", "08:05")
     if ':' in col_str:
         try:
             parts = col_str.split(':')
@@ -88,7 +57,6 @@ def parse_time_column(col_name):
         except:
             return None
     
-    # Format 2: Decimal (e.g., 8, 8.05, 8.1)
     try:
         time_float = float(col_str)
         hour = int(time_float)
@@ -99,27 +67,15 @@ def parse_time_column(col_name):
 
 
 def read_wide_excel(file_path):
-    """
-    Read wide-format Excel file with Date + time interval columns.
-    Handles both 2022 and 2018-2021, 2023-2024 formats.
-    
-    Args:
-        file_path (Path): Path to Excel file
-        
-    Returns:
-        pd.DataFrame: Long-format dataframe with datetime column
-    """
+    """Read wide-format Excel file with Date + time interval columns."""
     logger.info(f"Reading {file_path.name}")
     
-    # Extract district
     district = extract_district_from_filename(file_path.name)
     logger.info(f"  Detected district: {district}")
     
-    # Read all sheets
     excel_file = pd.ExcelFile(file_path)
     sheet_names = excel_file.sheet_names
     
-    # Filter out README sheets
     data_sheets = [
         s for s in sheet_names 
         if 'readme' not in s.lower() and 'info' not in s.lower()
@@ -131,7 +87,6 @@ def read_wide_excel(file_path):
     
     for sheet_name in data_sheets:
         try:
-            # Read sheet
             df = pd.read_excel(file_path, sheet_name=sheet_name)
             df.columns = [str(c).strip() for c in df.columns]
             
@@ -139,13 +94,11 @@ def read_wide_excel(file_path):
                 logger.warning(f"  ⚠️ Skipping sheet '{sheet_name}' - insufficient data")
                 continue
             
-            # Identify metadata columns and time columns
             meta_cols_possible = ['Date', 'Month', 'Day', 'Year', 'District', 'Zone']
             meta_cols = [c for c in df.columns if c in meta_cols_possible]
             
-            # Time columns are those that can be parsed as time
             time_cols = []
-            time_mapping = {}  # Maps column name to (hour, minute)
+            time_mapping = {}
             
             for col in df.columns:
                 if col not in meta_cols:
@@ -158,7 +111,6 @@ def read_wide_excel(file_path):
                 logger.warning(f"  ⚠️ Skipping sheet '{sheet_name}' - no time columns found")
                 continue
             
-            # Melt to long format
             df_long = df.melt(
                 id_vars=meta_cols,
                 value_vars=time_cols,
@@ -166,23 +118,19 @@ def read_wide_excel(file_path):
                 value_name='generation_kw'
             )
             
-            # Extract hour and minute from time_mapping
             df_long['hour'] = df_long['time_decimal'].map(lambda x: time_mapping.get(x, (0, 0))[0])
             df_long['minute'] = df_long['time_decimal'].map(lambda x: time_mapping.get(x, (0, 0))[1])
             
             # Handle Date column
             if 'Date' in df_long.columns:
-                # Try to parse as datetime
                 df_long['Date'] = pd.to_datetime(df_long['Date'], errors='coerce')
                 
-                # If dates are invalid (like day numbers), reconstruct from sheet name and year
-                if df_long['Date'].isna().all() or df_long['Date'].dt.year.min() < 1900:
-                    # Extract year from filename
+                # If dates are completely invalid, try reconstruction
+                if df_long['Date'].isna().all() or (df_long['Date'].notna().any() and df_long['Date'].dt.year.min() < 1900):
                     year_match = re.search(r'20\d{2}', file_path.name)
                     if year_match:
                         year = int(year_match.group())
                         
-                        # Extract month from sheet name or use Month column
                         if 'Month' in df_long.columns:
                             month = df_long['Month'].iloc[0]
                         else:
@@ -193,35 +141,43 @@ def read_wide_excel(file_path):
                             else:
                                 month = 1
                         
-                        # Use Day column if exists, otherwise use Date as day number
                         if 'Day' in df_long.columns:
                             day = df_long['Day']
                         else:
-                            # Date column contains day numbers (1, 2, 3, ...)
                             day = pd.to_numeric(df_long['Date'], errors='coerce')
                         
-                        # Reconstruct date
                         df_long['Date'] = pd.to_datetime(
                             {'year': year, 'month': month, 'day': day},
                             errors='coerce'
                         )
             
-            # Drop rows with invalid dates
+            # Drop invalid dates
             df_long = df_long.dropna(subset=['Date'])
             
             if len(df_long) == 0:
                 logger.warning(f"  ⚠️ Skipping sheet '{sheet_name}' - all dates invalid")
                 continue
             
-            # Extract Year, Month, Day if not present
-            if 'Year' not in df_long.columns:
-                df_long['Year'] = df_long['Date'].dt.year
-            if 'Month' not in df_long.columns:
-                df_long['Month'] = df_long['Date'].dt.month
-            if 'Day' not in df_long.columns:
-                df_long['Day'] = df_long['Date'].dt.day
+            # ✅ ALWAYS extract Year, Month, Day from the Date column
+            df_long['Year'] = df_long['Date'].dt.year
+            df_long['Month'] = df_long['Date'].dt.month
+            df_long['Day'] = df_long['Date'].dt.day
             
-            # Add district and zone
+            # ✅ FIX: If Year is 1970 (Unix epoch bug), replace with year from filename
+            if (df_long['Year'] == 1970).any():
+                year_match = re.search(r'20\d{2}', file_path.name)
+                if year_match:
+                    correct_year = int(year_match.group())
+                    wrong_year_mask = df_long['Year'] == 1970
+                    
+                    # Fix Year column
+                    df_long.loc[wrong_year_mask, 'Year'] = correct_year
+                    
+                    # Fix Date column by replacing the year
+                    df_long.loc[wrong_year_mask, 'Date'] = df_long.loc[wrong_year_mask].apply(
+                        lambda row: row['Date'].replace(year=correct_year), axis=1
+                    )
+            
             df_long['District'] = district
             df_long['Zone'] = ""
             
@@ -238,9 +194,7 @@ def read_wide_excel(file_path):
                 'District', 'Zone', 'time_decimal', 'generation_kw'
             ]]
             
-            # Sort by datetime
             df_long = df_long.sort_values('datetime').reset_index(drop=True)
-            
             all_sheets_data.append(df_long)
             
         except Exception as e:
@@ -251,7 +205,6 @@ def read_wide_excel(file_path):
         logger.error(f"  ❌ No valid data sheets found")
         return None
     
-    # Combine all sheets
     df_combined = pd.concat(all_sheets_data, ignore_index=True)
     logger.info(f"  ✅ Processed {len(data_sheets)} sheet(s) → {len(df_combined):,} rows")
     
@@ -259,32 +212,25 @@ def read_wide_excel(file_path):
 
 
 def ingest_data():
-    """
-    Main ingestion function: reads all raw Excel files and creates Bronze parquet.
-    """
+    """Main ingestion function: reads all raw Excel files and creates Bronze parquet."""
     cfg = load_config()
     
     raw_path = Path(cfg.data_paths['raw'])
     bronze_path = Path(cfg.data_paths['bronze'])
-    
-    # Create bronze directory if it doesn't exist
     bronze_path.mkdir(parents=True, exist_ok=True)
     
     logger.info("="*60)
     logger.info("STEP 1: INGESTION (Raw → Bronze)")
     logger.info("="*60)
     
-    # Find all Excel files in raw directory
     excel_files = sorted(list(raw_path.glob('*.xlsx')) + list(raw_path.glob('*.xls')))
     
     if not excel_files:
         logger.error(f"❌ No Excel files found in {raw_path}")
-        logger.info(f"Please add Excel files to {raw_path.absolute()}")
         return
     
     logger.info(f"Found {len(excel_files)} Excel files\n")
     
-    # Process each file
     all_data = []
     success_count = 0
     failed_files = []
@@ -308,38 +254,60 @@ def ingest_data():
         logger.error("\n❌ No data was successfully ingested")
         return
     
-        # Combine all dataframes
     logger.info(f"\n{'='*60}")
     logger.info(f"Combining data from {success_count} files...")
     df_combined = pd.concat(all_data, ignore_index=True)
     logger.info(f"Combined: {len(df_combined):,} rows")
     
-    # FILTER OUT INVALID YEARS (automatic range based on current year)
-    current_year = datetime.now().year  # ← NEW: Get current year
+    # DEBUG: Show year distribution BEFORE filtering
+    print("\n" + "="*60)
+    print("DEBUG: Year distribution BEFORE filtering:")
+    print(df_combined['Year'].value_counts().sort_index())
+    print(f"\nYear column dtype: {df_combined['Year'].dtype}")
+    print(f"Total unique years: {df_combined['Year'].nunique()}")
+    print(f"Min year: {df_combined['Year'].min()}")
+    print(f"Max year: {df_combined['Year'].max()}")
     
+    nan_years = df_combined['Year'].isna().sum()
+    if nan_years > 0:
+        print(f"⚠️ WARNING: {nan_years:,} rows have NaN/NULL year values!")
+    
+    suspicious = df_combined[(df_combined['Year'] < 2018) | (df_combined['Year'] > 2030)]
+    if len(suspicious) > 0:
+        print(f"⚠️ WARNING: {len(suspicious):,} rows have suspicious year values:")
+        print(suspicious['Year'].value_counts().sort_index())
+    print("="*60 + "\n")
+    
+    # Filter invalid years
+    current_year = datetime.now().year
     logger.info(f"Filtering out invalid dates...")
     before_filter = len(df_combined)
     df_combined = df_combined[
         (df_combined['Year'] >= 2018) & 
-        (df_combined['Year'] <= current_year + 1)  # ← NEW: Dynamic upper limit
+        (df_combined['Year'] <= current_year + 1)
     ]
     after_filter = len(df_combined)
     removed = before_filter - after_filter
     if removed > 0:
         logger.warning(f"  Removed {removed:,} rows with invalid years")
-    logger.info(f"  Keeping years: 2018-{current_year + 1}")  # ← NEW: Show range
+    logger.info(f"  Keeping years: 2018-{current_year + 1}")
     logger.info(f"After filter: {len(df_combined):,} rows")
+    
+    # DEBUG: Show year distribution AFTER filtering
+    print("\n" + "="*60)
+    print("DEBUG: Year distribution AFTER filtering:")
+    print(df_combined['Year'].value_counts().sort_index())
+    print("="*60 + "\n")
     
     # Check for duplicates
     logger.info(f"Checking for duplicates...")
-
     original_len = len(df_combined)
     df_combined = df_combined.drop_duplicates(subset=['District', 'datetime'])
     duplicates_removed = original_len - len(df_combined)
     if duplicates_removed > 0:
         logger.info(f"  Removed {duplicates_removed:,} duplicate records")
     
-    # Save to Bronze as parquet
+    # Save to Bronze
     output_file = bronze_path / "bronze_all_years.parquet"
     write_parquet(df_combined, output_file)
     
@@ -362,13 +330,11 @@ def ingest_data():
 
 
 if __name__ == "__main__":
-    # Set up logging for standalone execution
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s'
     )
     ingest_data()
-
 
 
 

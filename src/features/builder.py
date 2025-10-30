@@ -17,87 +17,92 @@ logger = logging.getLogger(__name__)
 
 def add_lag_features(df: pd.DataFrame, lags: List[int]) -> pd.DataFrame:
     """
-    Add lag features with year carryover - fully vectorized (no row loops).
+    Add lag features with year carryover - ULTIMATE FAST version using .loc.
     """
     logger.info(f"Adding lag features: {lags}")
     df = df.sort_values(['District', 'datetime']).copy()
     
-    # Standard lag creation
+    # Standard lag creation (fast)
     for lag in lags:
         col = f'generation_kw_lag{lag}'
         df[col] = df.groupby('District', group_keys=False)['generation_kw'].shift(lag)
     
-    # Previous-day same-time lag
+    # Previous-day same-time lag (fast)
     prev_day_lag = 109
     if prev_day_lag not in lags:
         col = f'generation_kw_lag{prev_day_lag}'
         logger.info(f"Adding previous-day same-time lag: {prev_day_lag}")
         df[col] = df.groupby('District', group_keys=False)['generation_kw'].shift(prev_day_lag)
     
-    # ✅ SUPER FAST: Handle Jan 1 with merge instead of loops
+    # ✅ ULTIMATE FAST: Fully vectorized year carryover
     logger.info("Applying year carryover for January 1st...")
     
-    # Identify Jan 1 rows
-    df['month'] = df['datetime'].dt.month
-    df['day'] = df['datetime'].dt.day
-    df['year'] = df['datetime'].dt.year
-    df['time'] = df['datetime'].dt.time
+    df['_year'] = df['datetime'].dt.year
+    df['_month'] = df['datetime'].dt.month
+    df['_day'] = df['datetime'].dt.day
+    df['_time_str'] = df['datetime'].dt.strftime('%H:%M:%S')
     
-    jan1_mask = (df['month'] == 1) & (df['day'] == 1)
+    # Identify all Jan 1 rows
+    jan1_mask = (df['_month'] == 1) & (df['_day'] == 1)
     
     if jan1_mask.sum() > 0:
-        # Create a reference dataset for previous year Jan 1
-        jan1_ref = df[jan1_mask].copy()
-        jan1_ref['target_year'] = jan1_ref['year'] + 1  # This year's Jan 1 → next year's Jan 1
-        jan1_ref = jan1_ref.rename(columns={'generation_kw': 'prev_year_gen'})
-        jan1_ref = jan1_ref[['District', 'target_year', 'time', 'prev_year_gen']]
-        
-        # Merge back to fill lag109 for Jan 1 rows
-        df = df.merge(
-            jan1_ref,
-            left_on=['District', 'year', 'time'],
-            right_on=['District', 'target_year', 'time'],
-            how='left'
-        )
-        
-        # Fill lag109 for Jan 1 where we found a match
-        jan1_with_prev = jan1_mask & df['prev_year_gen'].notna()
-        df.loc[jan1_with_prev, 'generation_kw_lag109'] = df.loc[jan1_with_prev, 'prev_year_gen']
-        
-        # For short-term lags, estimate from previous year's value
-        if jan1_with_prev.sum() > 0:
-            df.loc[jan1_with_prev, 'generation_kw_lag1'] = df.loc[jan1_with_prev, 'prev_year_gen'] * 0.98
-            df.loc[jan1_with_prev, 'generation_kw_lag12'] = df.loc[jan1_with_prev, 'prev_year_gen'] * 0.95
-            df.loc[jan1_with_prev, 'generation_kw_lag24'] = df.loc[jan1_with_prev, 'prev_year_gen'] * 0.90
-            if 'generation_kw_lag36' in df.columns:
-                df.loc[jan1_with_prev, 'generation_kw_lag36'] = df.loc[jan1_with_prev, 'prev_year_gen'] * 0.85
-        
-        # For 2018 Jan 1 (no previous year), use Jan 2-7 average
-        jan1_2018 = jan1_mask & (df['year'] == 2018)
-        if jan1_2018.sum() > 0:
-            # Calculate average from Jan 2-7 by district and time
-            jan2_7 = df[(df['month'] == 1) & (df['day'].between(2, 7))]
-            jan2_7_avg = jan2_7.groupby(['District', 'time'])['generation_kw'].mean().reset_index()
-            jan2_7_avg = jan2_7_avg.rename(columns={'generation_kw': 'jan2_7_avg'})
+        # For years 2019-2024: Use previous year Jan 1
+        for year in range(2019, 2025):
+            year_mask = jan1_mask & (df['_year'] == year)
+            if year_mask.sum() == 0:
+                continue
             
-            df = df.merge(jan2_7_avg, on=['District', 'time'], how='left')
-            df.loc[jan1_2018, 'generation_kw_lag109'] = df.loc[jan1_2018, 'jan2_7_avg']
-            df.loc[jan1_2018, 'generation_kw_lag1'] = df.loc[jan1_2018, 'jan2_7_avg']
-            df.loc[jan1_2018, 'generation_kw_lag12'] = df.loc[jan1_2018, 'jan2_7_avg']
-            df.loc[jan1_2018, 'generation_kw_lag24'] = df.loc[jan1_2018, 'jan2_7_avg']
-            if 'generation_kw_lag36' in df.columns:
-                df.loc[jan1_2018, 'generation_kw_lag36'] = df.loc[jan1_2018, 'jan2_7_avg']
+            # Get indices for current year Jan 1
+            current_indices = df[year_mask].index
             
-            df = df.drop(columns=['jan2_7_avg'], errors='ignore')
+            # Build a mapping from (District, time) to prev year's value
+            prev_year_jan1 = df[(df['_year'] == year-1) & (df['_month'] == 1) & (df['_day'] == 1)].copy()
+            prev_year_jan1['_key'] = prev_year_jan1['District'] + '|' + prev_year_jan1['_time_str']
+            prev_lookup = dict(zip(prev_year_jan1['_key'], prev_year_jan1['generation_kw']))
+            
+            # Apply to current year
+            current_rows = df.loc[current_indices].copy()
+            current_rows['_key'] = current_rows['District'] + '|' + current_rows['_time_str']
+            current_rows['_prev_val'] = current_rows['_key'].map(prev_lookup)
+            
+            # Use vectorized assignment
+            has_prev = current_rows['_prev_val'].notna()
+            indices_with_prev = current_rows[has_prev].index
+            prev_values = current_rows.loc[indices_with_prev, '_prev_val'].values
+            
+            df.loc[indices_with_prev, 'generation_kw_lag109'] = prev_values
+            df.loc[indices_with_prev, 'generation_kw_lag1'] = prev_values * 0.98
+            df.loc[indices_with_prev, 'generation_kw_lag12'] = prev_values * 0.95
+            df.loc[indices_with_prev, 'generation_kw_lag24'] = prev_values * 0.90
+            if 36 in lags:
+                df.loc[indices_with_prev, 'generation_kw_lag36'] = prev_values * 0.85
         
-        # Clean up merge columns
-        df = df.drop(columns=['target_year', 'prev_year_gen'], errors='ignore')
+        # For 2018: Use Jan 2-7 average
+        year_2018_mask = jan1_mask & (df['_year'] == 2018)
+        if year_2018_mask.sum() > 0:
+            jan2_7 = df[(df['_year'] == 2018) & (df['_month'] == 1) & (df['_day'].between(2, 7))].copy()
+            jan2_7['_key'] = jan2_7['District'] + '|' + jan2_7['_time_str']
+            jan2_7_avg = jan2_7.groupby('_key')['generation_kw'].mean()
+            
+            current_2018 = df[year_2018_mask].copy()
+            current_2018['_key'] = current_2018['District'] + '|' + current_2018['_time_str']
+            current_2018['_avg_val'] = current_2018['_key'].map(jan2_7_avg)
+            
+            has_avg = current_2018['_avg_val'].notna()
+            indices_with_avg = current_2018[has_avg].index
+            avg_values = current_2018.loc[indices_with_avg, '_avg_val'].values
+            
+            df.loc[indices_with_avg, 'generation_kw_lag1'] = avg_values
+            df.loc[indices_with_avg, 'generation_kw_lag12'] = avg_values
+            df.loc[indices_with_avg, 'generation_kw_lag24'] = avg_values
+            if 36 in lags:
+                df.loc[indices_with_avg, 'generation_kw_lag36'] = avg_values
+            df.loc[indices_with_avg, 'generation_kw_lag109'] = avg_values
         
-        jan1_fixed = jan1_with_prev.sum() + jan1_2018.sum()
-        logger.info(f"Applied year carryover to {jan1_fixed} January 1st records")
+        logger.info(f"Applied year carryover to {jan1_mask.sum():,} January 1st records")
     
-    # Clean up helper columns
-    df = df.drop(columns=['month', 'day', 'year', 'time'])
+    # Clean up
+    df = df.drop(columns=['_year', '_month', '_day', '_time_str'])
     
     # Fill remaining NaN with 0
     lag_cols = [c for c in df.columns if c.startswith('generation_kw_lag')]
@@ -105,7 +110,6 @@ def add_lag_features(df: pd.DataFrame, lags: List[int]) -> pd.DataFrame:
         df[col] = df[col].fillna(0)
     
     return df
-
 
 def add_rolling_features(df: pd.DataFrame, windows: List[int]) -> pd.DataFrame:
     """
@@ -168,27 +172,36 @@ def select_feature_columns(df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
 
 def drop_na_after_features(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Drop rows with NA in key engineered features, BUT keep January 1st rows.
+    Drop rows with NA in key engineered features, BUT preserve January 1st rows.
     """
     before = len(df)
     
-    # Identify January 1st rows to preserve
+    # Mark January 1st rows
     jan1_mask = (df['datetime'].dt.month == 1) & (df['datetime'].dt.day == 1)
     
     # Get engineered feature columns
     engineered_cols = [c for c in df.columns if c.startswith('generation_kw_lag') or 
                        c.startswith('gen_roll_') or c.startswith('gen_ema_')]
     
-    # Drop NA only for non-January-1st rows
+    # Separate Jan 1 and other rows
     df_jan1 = df[jan1_mask].copy()
-    df_other = df[~jan1_mask].dropna(subset=engineered_cols)
+    df_other = df[~jan1_mask].copy()
+    
+    # Drop NA only from non-January-1st rows
+    df_other = df_other.dropna(subset=engineered_cols)
+    
+    # For January 1st, fill any remaining NaN with 0
+    for col in engineered_cols:
+        if col in df_jan1.columns:
+            df_jan1[col] = df_jan1[col].fillna(0)
     
     # Recombine
     df = pd.concat([df_jan1, df_other], ignore_index=True).sort_values(['District', 'datetime'])
     
     after = len(df)
-    logger.info(f"Dropped {before - after:,} rows with NA (preserved January 1st); remaining: {after:,}")
+    logger.info(f"Dropped {before - after:,} rows with NA (preserved {len(df_jan1):,} January 1st rows); remaining: {after:,}")
     return df
+
 
 def build_features():
     """
