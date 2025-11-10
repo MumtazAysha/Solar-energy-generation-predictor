@@ -50,6 +50,42 @@ Correlation Analysis
                     
 
 
+# Solar Data Converter
+
+## Purpose
+Converts solar energy data from multiple monthly sheets to 2022 format with:
+- Continuous day numbering (1-365/366)
+- Sri Lanka irradiance constant (5.25)
+- Normalized calculations
+
+## Usage
+
+
+## When to Use
+- New data from 2025 or beyond
+- Data from additional districts
+- Re-processing with updated formulas
+
+## Input Format
+- Multiple sheets (one per month)
+- Time columns as strings ('08:00', '08:05', etc.)
+- Date/Month/Day columns
+
+## Output Format
+- Single sheet with all year data
+- Days numbered 1-365/366
+- Time columns as decimals (8, 8.05, etc.)
+- Summary rows: Total kW, Daily Average, Energy kWh
+
+
+This script:
+- Converts multiple monthly sheets to single annual sheet
+- Applies continuous day numbering
+- Calculates normalized values using Sri Lanka's irradiance constant (5.25)
+
+**Location:** `scripts/convert.py`
+**Input:** `data/raw/*.xlsx`
+**Output:** `data/processed/*-CONVERTED.xlsx`
 
 
 

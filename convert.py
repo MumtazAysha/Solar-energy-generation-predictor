@@ -2,23 +2,41 @@ import pandas as pd
 import os
 import glob
 import warnings
-from datetime import datetime
+import numpy as np
+import calendar
 
 warnings.filterwarnings('ignore', category=pd.errors.PerformanceWarning)
 
-def convert_to_2022_format(input_file, output_file):
-    """Convert to 2022 format with continuous day numbering (1-365)"""
+def convert_to_2022_format(input_file, output_file, year=None):
+    """
+    Convert to 2022 format with continuous day numbering and correct summary calculations
+    
+    Parameters:
+    input_file: Path to input file
+    output_file: Path to output file
+    year: Year of the data (to determine leap year for correct day count)
+    """
     
     if not os.path.exists(input_file):
         raise FileNotFoundError(f"Input file not found: {input_file}")
+    
+    # Extract year from filename if not provided
+    if year is None:
+        import re
+        year_match = re.search(r'20\d{2}', os.path.basename(input_file))
+        if year_match:
+            year = int(year_match.group())
+        else:
+            year = 2018  # Default fallback
     
     xl = pd.ExcelFile(input_file)
     month_sheets = [sheet for sheet in xl.sheet_names if sheet.lower() != 'readme']
     
     print(f"Processing {len(month_sheets)} sheets from {os.path.basename(input_file)}...")
+    print(f"  Year: {year} (Leap year: {calendar.isleap(year)})")
     
     all_data = []
-    day_counter = 1  # CRITICAL: Start continuous day counter
+    day_counter = 1
     
     for sheet in month_sheets:
         print(f"  Processing {sheet}...")
@@ -46,14 +64,12 @@ def convert_to_2022_format(input_file, output_file):
         
         result_df = pd.DataFrame(time_data)
         
-        # CRITICAL FIX: Create continuous day numbering
+        # Create continuous day numbering
         num_days = len(df_month)
         continuous_days = list(range(day_counter, day_counter + num_days))
         result_df.insert(0, 'Date', continuous_days)
         
-        # Update counter for next month
         day_counter += num_days
-        
         all_data.append(result_df)
     
     # Concatenate all months
@@ -63,9 +79,48 @@ def convert_to_2022_format(input_file, output_file):
     time_columns = sorted([col for col in final_df.columns if col != 'Date'])
     final_df = final_df[['Date'] + time_columns]
     
+    # === ADD SUMMARY ROWS WITH CORRECT FORMULAS ===
+    print("  Calculating summary rows...")
+    
+    # Constants
+    IRRADIANCE_CONSTANT = 5.25  # Sri Lanka's irradiance constant
+    num_days = len(final_df)
+    
+    # Get only numeric columns (time columns)
+    numeric_cols = [col for col in final_df.columns if col != 'Date']
+    
+    # Calculate summary rows
+    summary_rows = []
+    
+    # Row 1: Total kW = SUM(all values) / 1000
+    total_kw_row = {'Date': 'Total kW'}
+    for col in numeric_cols:
+        total_kw_row[col] = final_df[col].sum() / 1000
+    summary_rows.append(total_kw_row)
+    
+    # Row 2: Daily Average per day per kW = Total kW / (5.25 × num_days)
+    daily_avg_row = {'Date': 'Daily Avarage per day per kW'}  # Keep typo as in 2022
+    for col in numeric_cols:
+        daily_avg_row[col] = total_kw_row[col] / (IRRADIANCE_CONSTANT * num_days)
+    summary_rows.append(daily_avg_row)
+    
+    # Row 3: Energy kWh = Daily Average × (5/60)
+    energy_kwh_row = {'Date': 'Energy kWh'}
+    for col in numeric_cols:
+        energy_kwh_row[col] = daily_avg_row[col] * (5 / 60)
+    summary_rows.append(energy_kwh_row)
+    
+    # Append summary rows to dataframe
+    summary_df = pd.DataFrame(summary_rows)
+    final_df = pd.concat([final_df, summary_df], ignore_index=True)
+    
     print(f"✓ Conversion complete!")
     print(f"  Final shape: {final_df.shape[0]} rows × {final_df.shape[1]} columns")
-    print(f"  Day range: Day {final_df['Date'].min()} to Day {final_df['Date'].max()}")
+    print(f"  Day range: Day 1 to Day {num_days}")
+    print(f"  Summary calculations:")
+    print(f"    - Total kW = SUM / 1000")
+    print(f"    - Daily Average = Total kW / ({IRRADIANCE_CONSTANT} × {num_days})")
+    print(f"    - Energy kWh = Daily Average × (5/60)")
     
     # Ensure output file has .xlsx extension
     if not output_file.endswith('.xlsx'):
@@ -82,7 +137,7 @@ def convert_to_2022_format(input_file, output_file):
 
 
 def batch_convert_all_files(raw_folder, output_folder, target_year=2022):
-    """Batch convert with continuous day numbering"""
+    """Batch convert with correct solar energy formulas"""
     
     os.makedirs(output_folder, exist_ok=True)
     
@@ -130,6 +185,8 @@ def batch_convert_all_files(raw_folder, output_folder, target_year=2022):
                 error_count += 1
         except Exception as e:
             print(f"✗ Error: {str(e)}\n")
+            import traceback
+            traceback.print_exc()
             error_count += 1
     
     print("\n" + "="*70)
@@ -148,8 +205,15 @@ if __name__ == "__main__":
     output_folder = os.path.join(project_root, 'data', 'processed')
     
     print("="*70)
-    print("SOLAR ENERGY DATA CONVERTER")
-    print("Converting to 2022 format with continuous day numbering (1-365/366)")
+    print("SOLAR ENERGY DATA CONVERTER - Sri Lanka")
+    print("="*70)
+    print("Features:")
+    print("  • Continuous day numbering (1-365 or 1-366)")
+    print("  • Correct solar energy calculations:")
+    print("    - Total kW = SUM / 1000")
+    print("    - Daily Average = Total kW / (5.25 × days)")
+    print("    - Energy kWh = Daily Average × (5/60)")
+    print("  • Irradiance constant: 5.25 (Sri Lanka)")
     print("="*70)
     print(f"Input folder:  {raw_folder}")
     print(f"Output folder: {output_folder}\n")
